@@ -212,9 +212,9 @@ full_node:
   # How often to initiate outbound connections to other full nodes.
   peer_connect_interval: 30
   # Accept peers until this number of connections
-  target_peer_count: 220
+  target_peer_count: 80
   # Initiate outbound connections until this number is hit.
-  target_outbound_peer_count: 22
+  target_outbound_peer_count: 8
   # IPv4/IPv6 network addresses and CIDR blocks allowed to connect even when target_peer_count has been hit.
   # exempt_peer_networks: ["192.168.0.3", "192.168.1.0/24", "fe80::/10", "2606:4700:4700::64/128"]
   exempt_peer_networks: []
@@ -304,7 +304,7 @@ introducer:
 
 wallet:
   port: 22449
-  rpc_port: 9256
+  rpc_port: 22256
 
   enable_profiler: False
 
