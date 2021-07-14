@@ -11,7 +11,7 @@ from wheat.types.blockchain_format.coin import Coin
 from wheat.types.blockchain_format.program import Program
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.spend_bundle import SpendBundle
-from wheat.types.coin_solution import CoinSolution
+from wheat.types.coin_spend import CoinSpend
 from wheat.util.byte_types import hexstr_to_bytes
 from wheat.util.db_wrapper import DBWrapper
 from wheat.util.hash import std_hash
@@ -360,14 +360,14 @@ class TradeManager:
         if trade_offer is not None:
             offer_spend_bundle: SpendBundle = trade_offer.spend_bundle
 
-        coinsols: List[CoinSolution] = []  # [] of CoinSolutions
-        cc_coinsol_outamounts: Dict[bytes32, List[Tuple[CoinSolution, int]]] = dict()
+        coinsols: List[CoinSpend] = []  # [] of CoinSpends
+        cc_coinsol_outamounts: Dict[bytes32, List[Tuple[CoinSpend, int]]] = dict()
         aggsig = offer_spend_bundle.aggregated_signature
         cc_discrepancies: Dict[bytes32, int] = dict()
         wheat_discrepancy = None
         wallets: Dict[bytes32, Any] = dict()  # colour to wallet dict
 
-        for coinsol in offer_spend_bundle.coin_solutions:
+        for coinsol in offer_spend_bundle.coin_spends:
             puzzle: Program = Program.from_bytes(bytes(coinsol.puzzle_reveal))
             solution: Program = Program.from_bytes(bytes(coinsol.solution))
 
@@ -414,7 +414,7 @@ class TradeManager:
             )
             if wheat_spend_bundle is not None:
                 for coinsol in coinsols:
-                    wheat_spend_bundle.coin_solutions.append(coinsol)
+                    wheat_spend_bundle.coin_spends.append(coinsol)
 
         zero_spend_list: List[SpendBundle] = []
         spend_bundle = None

@@ -1,6 +1,6 @@
 [submodule "wheat-blockchain-gui"]
 	path = wheat-blockchain-gui
-	url = https://github.com/wheatnetwork/wheat-blockchain-gui.git
+	url = https://github.com/WheatNetwork/wheat-blockchain-gui.git
 [submodule "mozilla-ca"]
 	path = mozilla-ca
 	url = https://github.com/Chia-Network/mozilla-ca.git

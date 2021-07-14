@@ -110,7 +110,7 @@ def configure(
 
         elif testnet == "false" or testnet == "f":
             print("Setting Mainnet")
-            mainnet_port = "22333"
+            mainnet_port = "21333"
             mainnet_introducer = "introducer.wheat.network"
             net = "mainnet"
             config["full_node"]["port"] = int(mainnet_port)

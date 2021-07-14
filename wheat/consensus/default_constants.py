@@ -30,7 +30,7 @@ testnet_kwargs = {
     # Default used for tests is std_hash(b'')
     "GENESIS_CHALLENGE": bytes.fromhex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
     # Forks of wheat should change this value to provide replay attack protection. This is set to mainnet genesis chall
-    "AGG_SIG_ME_ADDITIONAL_DATA": bytes.fromhex("e09023ff93cc8d91757058d213f7b67ea7754a3557bd612efdbdd8c3c5db9edc"),
+    "AGG_SIG_ME_ADDITIONAL_DATA": bytes.fromhex("2504307e5ea08f9edefb3a002990417c1b8ebec055bbe8cf673e7f56a0601511"),
     "GENESIS_PRE_FARM_POOL_PUZZLE_HASH": bytes.fromhex(
         "7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7"
     ),
@@ -50,7 +50,7 @@ testnet_kwargs = {
     "BLOCKS_CACHE_SIZE": 4608 + (128 * 4),
     "WEIGHT_PROOF_RECENT_BLOCKS": 1000,
     "MAX_BLOCK_COUNT_PER_REQUESTS": 32,  # Allow up to 32 blocks per request
-    "INITIAL_FREEZE_END_TIMESTAMP": 0,  # Mon May 03 2021 17:00:00 GMT+0000
+    "INITIAL_FREEZE_END_TIMESTAMP": 1626182291,  # 2021-07-13 21:18:11 GMT+8000
     "NETWORK_TYPE": 0,
     "MAX_GENERATOR_SIZE": 1000000,
     "MAX_GENERATOR_REF_LIST_SIZE": 512,  # Number of references allowed in the block generator ref list
