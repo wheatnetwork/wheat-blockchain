@@ -244,6 +244,7 @@ class WheatServer:
                 self._outbound_rate_limit_percent,
                 close_event,
             )
+
             handshake = await connection.perform_handshake(
                 self._network_id,
                 protocol_version,
@@ -252,8 +253,12 @@ class WheatServer:
             )
 
             assert handshake is True
+            if connection.connection_type == NodeType.FULL_NODE and connection.peer_server_port != self._port:
+                self.log.info(f" {connection.peer_server_port} PORT NOT MATCH FULL_NODE PORT {self._port} ")
+                await connection.close()
+                close_event.set()
             # Limit inbound connections to config's specifications.
-            if not self.accept_inbound_connections(connection.connection_type) and not is_in_network(
+            elif not self.accept_inbound_connections(connection.connection_type) and not is_in_network(
                 connection.peer_host, self.exempt_peer_networks
             ):
                 self.log.info(f"Not accepting inbound connection: {connection.get_peer_info()}.Inbound limit reached.")
