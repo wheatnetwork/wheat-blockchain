@@ -13,6 +13,8 @@ from wheat.protocols.pool_protocol import POOL_PROTOCOL_VERSION
 from wheat.rpc.farmer_rpc_client import FarmerRpcClient
 from wheat.rpc.wallet_rpc_client import WalletRpcClient
 from wheat.types.blockchain_format.sized_bytes import bytes32
+from wheat.server.server import ssl_context_for_root
+from wheat.ssl.create_ssl import get_mozilla_ca_crt
 from wheat.util.bech32m import encode_puzzle_hash
 from wheat.util.byte_types import hexstr_to_bytes
 from wheat.util.config import load_config
@@ -25,7 +27,7 @@ from wheat.wallet.util.wallet_types import WalletType
 async def create_pool_args(pool_url: str) -> Dict:
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{pool_url}/pool_info") as response:
+            async with session.get(f"{pool_url}/pool_info", ssl=ssl_context_for_root(get_mozilla_ca_crt())) as response:
                 if response.ok:
                     json_dict = json.loads(await response.text())
                 else:
@@ -90,7 +92,7 @@ async def create(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -
                 tx = await wallet_client.get_transaction(str(1), tx_record.name)
                 if len(tx.sent_to) > 0:
                     print(f"Transaction submitted to nodes: {tx.sent_to}")
-                    print(f"Do wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
+                    print(f"Do wheat.wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
                     return None
         except Exception as e:
             print(f"Error creating plot NFT: {e}")
@@ -165,7 +167,7 @@ async def show(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
         if isinstance(e, aiohttp.ClientConnectorError):
             print(
                 f"Connection error. Check if farmer is running at {farmer_rpc_port}."
-                f" You can run the farmer by:\n    wheat start farmer-only"
+                f" You can run the farmer by:\n    wheat.start farmer-only"
             )
         else:
             print(f"Exception from 'wallet' {e}")
@@ -229,7 +231,7 @@ async def get_login_link(launcher_id_str: str) -> None:
         if isinstance(e, aiohttp.ClientConnectorError):
             print(
                 f"Connection error. Check if farmer is running at {farmer_rpc_port}."
-                f" You can run the farmer by:\n    wheat start farmer-only"
+                f" You can run the farmer by:\n    wheat.start farmer-only"
             )
         else:
             print(f"Exception from 'farmer' {e}")
@@ -256,7 +258,7 @@ async def submit_tx_with_confirmation(
                 tx = await wallet_client.get_transaction(str(1), tx_record.name)
                 if len(tx.sent_to) > 0:
                     print(f"Transaction submitted to nodes: {tx.sent_to}")
-                    print(f"Do wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
+                    print(f"Do wheat.wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
                     return None
         except Exception as e:
             print(f"Error performing operation on Plot NFT -f {fingerprint} wallet id: {wallet_id}: {e}")
@@ -275,7 +277,7 @@ async def join_pool(args: dict, wallet_client: WalletRpcClient, fingerprint: int
     prompt = not args.get("yes", False)
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{pool_url}/pool_info") as response:
+            async with session.get(f"{pool_url}/pool_info", ssl=ssl_context_for_root(get_mozilla_ca_crt())) as response:
                 if response.ok:
                     json_dict = json.loads(await response.text())
                 else:

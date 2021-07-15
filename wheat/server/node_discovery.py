@@ -383,7 +383,7 @@ class FullNodeDiscovery:
                     if time.time() - last_timestamp_local_info > 1800 or local_peerinfo is None:
                         local_peerinfo = await self.server.get_peer_info()
                         last_timestamp_local_info = uint64(int(time.time()))
-                    if local_peerinfo is not None and addr == local_peerinfo:
+                    if local_peerinfo is not None and addr == local_peerinfo or (addr is not None and addr.port != self.default_port):
                         continue
                     got_peer = True
                     self.log.debug(f"Addrman selected address: {addr}.")
