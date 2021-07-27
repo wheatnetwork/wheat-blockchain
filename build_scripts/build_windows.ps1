@@ -36,7 +36,7 @@ pip install setuptools_scm
 Write-Output "   ---"
 Write-Output "Get WHEAT_INSTALLER_VERSION"
 # The environment variable WHEAT_INSTALLER_VERSION needs to be defined
-$env:WHEAT_INSTALLER_VERSION = '1.2.202'
+$env:WHEAT_INSTALLER_VERSION = '1.2.300'
 Write-Output "Wheat Version is: $env:WHEAT_INSTALLER_VERSION"
 Write-Output "   ---"
 
