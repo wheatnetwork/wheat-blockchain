@@ -185,9 +185,9 @@ class FullNode:
             default_port = None
         if "dns_servers" in self.config:
             dns_servers = self.config["dns_servers"]
-        elif self.config["port"] == 21333:
+        elif self.config["port"] == 8444:
             # If `dns_servers` misses from the `config`, hardcode it if we're running mainnet.
-            dns_servers.append("dns-introducer.wheat.net")
+            dns_servers.append("dns-introducer.wheat.network")
         try:
             self.full_node_peers = FullNodePeers(
                 self.server,
@@ -217,12 +217,15 @@ class FullNode:
         Tries to sync to a chain which is not too far in the future, by downloading batches of blocks. If the first
         block that we download is not connected to our chain, we return False and do an expensive long sync instead.
         Long sync is not preferred because it requires downloading and validating a weight proof.
+
         Args:
             peer: peer to sync from
             start_height: height that we should start downloading at. (Our peak is higher)
             target_height: target to sync to
+
         Returns:
             False if the fork point was not found, and we need to do a long sync. True otherwise.
+
         """
         # Don't trigger multiple batch syncs to the same peer
 
@@ -284,11 +287,13 @@ class FullNode:
         """
         Performs a backtrack sync, where blocks are downloaded one at a time from newest to oldest. If we do not
         find the fork point 5 deeper than our peak, we return False and do a long sync instead.
+
         Args:
             peer: peer to sync from
             peak_height: height of our peak
             target_height: target height
             target_unf_hash: partial hash of the unfinished block of the target
+
         Returns:
             True iff we found the fork point, and we do not need to long sync.
         """
@@ -337,9 +342,11 @@ class FullNode:
         """
         We have received a notification of a new peak from a peer. This happens either when we have just connected,
         or when the peer has updated their peak.
+
         Args:
             request: information about the new peak
             peer: peer that sent the message
+
         """
 
         try:
@@ -872,7 +879,7 @@ class FullNode:
 
             peak_fb: FullBlock = await self.blockchain.get_full_peak()
             if peak is not None:
-                await self.peak_post_processing(peak_fb, peak, peak.height - 1, None)
+                await self.peak_post_processing(peak_fb, peak, max(peak.height - 1, 0), None)
 
         if peak is not None and self.weight_proof_handler is not None:
             await self.weight_proof_handler.get_proof_of_weight(peak.header_hash)
@@ -1369,7 +1376,7 @@ class FullNode:
                 f"Added unfinished_block {block_hash}, not farmed by us,"
                 f" SP: {block.reward_chain_block.signage_point_index} farmer response time: "
                 f"{time.time() - self.signage_point_times[block.reward_chain_block.signage_point_index]}, "
-                f"Pool pk {encode_puzzle_hash(block.foliage.foliage_block_data.pool_target.puzzle_hash, 'xch')}, "
+                f"Pool pk {encode_puzzle_hash(block.foliage.foliage_block_data.pool_target.puzzle_hash, 'wheat')}, "
                 f"validation time: {validation_time}, "
                 f"cost: {block.transactions_info.cost if block.transactions_info else 'None'}"
                 f"{percent_full_str}"

@@ -21,7 +21,7 @@ def init_cmd(ctx: click.Context, create_certs: str):
     - Run `wheat init -c [directory]` on your remote harvester,
       where [directory] is the the copy of your Farming Machine CA directory
     - Get more details on remote harvester on Wheat wiki:
-      https://github.com/WheatNetwork/wheat-blockchain/wiki/Farming-on-many-machines
+      https://github.com/Wheat-Network/wheat-blockchain/wiki/Farming-on-many-machines
     """
     from pathlib import Path
     from .init_funcs import init

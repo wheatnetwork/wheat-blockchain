@@ -9,14 +9,14 @@ from secrets import token_bytes
 from wheat.protocols import wallet_protocol
 from wheat.protocols.wallet_protocol import RespondAdditions, RejectAdditionsRequest
 from wheat.server.outbound_message import NodeType
-from wheat.types.blockchain_format.coin import Coin
-from wheat.types.coin_spend import CoinSpend
 from wheat.types.announcement import Announcement
+from wheat.types.blockchain_format.coin import Coin
 from wheat.types.blockchain_format.program import Program
-from wheat.types.spend_bundle import SpendBundle
 from wheat.types.blockchain_format.sized_bytes import bytes32
-from wheat.wallet.util.transaction_type import TransactionType
+from wheat.types.coin_spend import CoinSpend
+from wheat.types.spend_bundle import SpendBundle
 from wheat.util.ints import uint64, uint32, uint8
+from wheat.wallet.util.transaction_type import TransactionType
 
 from wheat.wallet.did_wallet.did_info import DIDInfo
 from wheat.wallet.lineage_proof import LineageProof

@@ -1,3 +1,5 @@
+from collections import Counter
+
 import aiohttp
 import asyncio
 import functools
@@ -92,7 +94,7 @@ async def create(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -
                 tx = await wallet_client.get_transaction(str(1), tx_record.name)
                 if len(tx.sent_to) > 0:
                     print(f"Transaction submitted to nodes: {tx.sent_to}")
-                    print(f"Do wheat.wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
+                    print(f"Do wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
                     return None
         except Exception as e:
             print(f"Error creating plot NFT: {e}")
@@ -106,7 +108,7 @@ async def pprint_pool_wallet_state(
     pool_wallet_info: PoolWalletInfo,
     address_prefix: str,
     pool_state_dict: Dict,
-    unconfirmed_transactions: List[TransactionRecord],
+    plot_counts: Counter,
 ):
     if pool_wallet_info.current.state == PoolSingletonState.LEAVING_POOL and pool_wallet_info.target is None:
         expected_leave_height = pool_wallet_info.singleton_block_height + pool_wallet_info.current.relative_lock_height
@@ -119,10 +121,11 @@ async def pprint_pool_wallet_state(
         "Target address (not for plotting): "
         f"{encode_puzzle_hash(pool_wallet_info.current.target_puzzle_hash, address_prefix)}"
     )
+    print(f"Number of plots: {plot_counts[pool_wallet_info.p2_singleton_puzzle_hash]}")
     print(f"Owner public key: {pool_wallet_info.current.owner_pubkey}")
 
     print(
-        f"P2 singleton address (pool contract address for plotting): "
+        f"Pool contract address (use ONLY for plotting - do not send money to this address): "
         f"{encode_puzzle_hash(pool_wallet_info.p2_singleton_puzzle_hash, address_prefix)}"
     )
     if pool_wallet_info.target is not None:
@@ -139,6 +142,11 @@ async def pprint_pool_wallet_state(
         if pool_wallet_info.launcher_id in pool_state_dict:
             print(f"Current difficulty: {pool_state_dict[pool_wallet_info.launcher_id]['current_difficulty']}")
             print(f"Points balance: {pool_state_dict[pool_wallet_info.launcher_id]['current_points']}")
+            num_points_found_24h = len(pool_state_dict[pool_wallet_info.launcher_id]["points_found_24h"])
+            if num_points_found_24h > 0:
+                num_points_ack_24h = len(pool_state_dict[pool_wallet_info.launcher_id]["points_acknowledged_24h"])
+                success_pct = num_points_ack_24h / num_points_found_24h
+                print(f"Percent Successful Points (24h): {success_pct:.2%}")
         print(f"Relative lock height: {pool_wallet_info.current.relative_lock_height} blocks")
         payout_instructions: str = pool_state_dict[pool_wallet_info.launcher_id]["pool_config"]["payout_instructions"]
         try:
@@ -161,13 +169,20 @@ async def show(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
     address_prefix = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
     summaries_response = await wallet_client.get_wallets()
     wallet_id_passed_in = args.get("id", None)
+    plot_counts: Counter = Counter()
     try:
         pool_state_list: List = (await farmer_client.get_pool_state())["pool_state"]
+        harvesters = await farmer_client.get_harvesters()
+        for d in harvesters["harvesters"]:
+            for plot in d["plots"]:
+                if plot.get("pool_contract_puzzle_hash", None) is not None:
+                    # Non pooled plots will have a None pool_contract_puzzle_hash
+                    plot_counts[hexstr_to_bytes(plot["pool_contract_puzzle_hash"])] += 1
     except Exception as e:
         if isinstance(e, aiohttp.ClientConnectorError):
             print(
                 f"Connection error. Check if farmer is running at {farmer_rpc_port}."
-                f" You can run the farmer by:\n    wheat.start farmer-only"
+                f" You can run the farmer by:\n    wheat start farmer-only"
             )
         else:
             print(f"Exception from 'wallet' {e}")
@@ -184,14 +199,14 @@ async def show(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
             if summary["id"] == wallet_id_passed_in and typ != WalletType.POOLING_WALLET:
                 print(f"Wallet with id: {wallet_id_passed_in} is not a pooling wallet. Please provide a different id.")
                 return
-        pool_wallet_info, unconfirmed_transactions = await wallet_client.pw_status(wallet_id_passed_in)
+        pool_wallet_info, _ = await wallet_client.pw_status(wallet_id_passed_in)
         await pprint_pool_wallet_state(
             wallet_client,
             wallet_id_passed_in,
             pool_wallet_info,
             address_prefix,
             pool_state_dict,
-            unconfirmed_transactions,
+            plot_counts,
         )
     else:
         print(f"Wallet height: {await wallet_client.get_height_info()}")
@@ -201,14 +216,14 @@ async def show(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
             typ = WalletType(int(summary["type"]))
             if typ == WalletType.POOLING_WALLET:
                 print(f"Wallet id {wallet_id}: ")
-                pool_wallet_info, unconfirmed_transactions = await wallet_client.pw_status(wallet_id)
+                pool_wallet_info, _ = await wallet_client.pw_status(wallet_id)
                 await pprint_pool_wallet_state(
                     wallet_client,
                     wallet_id,
                     pool_wallet_info,
                     address_prefix,
                     pool_state_dict,
-                    unconfirmed_transactions,
+                    plot_counts,
                 )
                 print("")
     farmer_client.close()
@@ -231,7 +246,7 @@ async def get_login_link(launcher_id_str: str) -> None:
         if isinstance(e, aiohttp.ClientConnectorError):
             print(
                 f"Connection error. Check if farmer is running at {farmer_rpc_port}."
-                f" You can run the farmer by:\n    wheat.start farmer-only"
+                f" You can run the farmer by:\n    wheat start farmer-only"
             )
         else:
             print(f"Exception from 'farmer' {e}")
@@ -258,7 +273,7 @@ async def submit_tx_with_confirmation(
                 tx = await wallet_client.get_transaction(str(1), tx_record.name)
                 if len(tx.sent_to) > 0:
                     print(f"Transaction submitted to nodes: {tx.sent_to}")
-                    print(f"Do wheat.wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
+                    print(f"Do wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_record.name} to get status")
                     return None
         except Exception as e:
             print(f"Error performing operation on Plot NFT -f {fingerprint} wallet id: {wallet_id}: {e}")

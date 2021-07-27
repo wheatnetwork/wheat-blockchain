@@ -38,7 +38,7 @@ steps:
   # Install an Apple certificate required to build on a macOS agent machine
   - task: InstallAppleCertificate@2
     inputs:
-      certSecureFile: 'chia-apple-dev-id-app.p12'
+      certSecureFile: 'apple-apple-dev-id-app.p12'
       certPwd: $(WHEAT_APPLE_DEV_ID_APP_PASS)
       keychain: temp
       deleteCert: true

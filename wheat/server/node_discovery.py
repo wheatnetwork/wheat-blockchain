@@ -26,8 +26,9 @@ MAX_PEERS_RECEIVED_PER_REQUEST = 1000
 MAX_TOTAL_PEERS_RECEIVED = 3000
 MAX_CONCURRENT_OUTBOUND_CONNECTIONS = 70
 NETWORK_ID_DEFAULT_PORTS = {
-    "mainnet": 21333,
-    "testnet7": 23333,
+    "mainnet": 8444,
+    "testnet7": 58444,
+    "testnet8": 58445,
 }
 
 
@@ -383,7 +384,9 @@ class FullNodeDiscovery:
                     if time.time() - last_timestamp_local_info > 1800 or local_peerinfo is None:
                         local_peerinfo = await self.server.get_peer_info()
                         last_timestamp_local_info = uint64(int(time.time()))
-                    if local_peerinfo is not None and addr == local_peerinfo or (addr is not None and addr.port != self.default_port):
+                    if local_peerinfo is not None and addr == local_peerinfo or (
+                        addr is not None and addr.port != self.default_port
+                    ):
                         continue
                     got_peer = True
                     self.log.debug(f"Addrman selected address: {addr}.")

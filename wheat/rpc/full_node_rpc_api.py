@@ -486,7 +486,6 @@ class FullNodeRpcApi:
 
         return {"coin_records": coin_records}
 
-
     async def push_tx(self, request: Dict) -> Optional[Dict]:
         if "spend_bundle" not in request:
             raise ValueError("Spend bundle not in request")
@@ -535,7 +534,7 @@ class FullNodeRpcApi:
 
         puzzle_ser: SerializedProgram = SerializedProgram.from_program(Program.to(puzzle))
         solution_ser: SerializedProgram = SerializedProgram.from_program(Program.to(solution))
-        return {"coin_spend": CoinSpend(coin_record.coin, puzzle_ser, solution_ser)}
+        return {"coin_solution": CoinSpend(coin_record.coin, puzzle_ser, solution_ser)}
 
     async def get_additions_and_removals(self, request: Dict) -> Optional[Dict]:
         if "header_hash" not in request:

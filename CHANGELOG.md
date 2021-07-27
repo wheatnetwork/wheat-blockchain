@@ -270,8 +270,8 @@ Batch process weight proof epochs in groups of 900 to fit below May 2020 sqlite 
 ### Changed
 
 - The plotter in bitfield mode is much improved in plotting speed (~15% faster than in 1.0.3), now requires 28% less temporary space (238.3 GiB/256 GB), and now uses its maximum memory in phase 1 and only needs 3389MiB for optimal sorting of a k32. Total writes should also be down by about 20%. On almost all machines we expect bitfield to be as fast or faster. For CPUs that predate the [Nehalem architecture](https://en.wikipedia.org/wiki/Nehalem_(microarchitecture)), bitfield plotting will not work and you will need to use no bitfield. Those CPUs were generally designed before 2010.
-- The `src` directory in wheat-blockchain has been changed to `chia` to avoid namespace collisions.
-- GUI install builds have been simplified to rely on one `.spec` file in `chia/`
+- The `src` directory in wheat-blockchain has been changed to `apple` to avoid namespace collisions.
+- GUI install builds have been simplified to rely on one `.spec` file in `apple/`
 - The weight proof timeout can now be configured in config.yaml.
 - Peer discovery is now retried more often after you receive initial peers.
 
@@ -729,7 +729,7 @@ all fields that referred to sub blocks are changed to blocks.
 - On starting full node, the weight proof cache does not attempt to load all sub blocks. Startup times are noticeably improved though there remains a hesitation when validating the mempool. Our clvm Rust implementation, which will likely ship in the next release, will drop example processing times from 180 to 3 seconds.
 - Changes to weight proofs and sub block storage and cacheing required a new database schema. This will require a re-sync or obtaining a synced blockchain_v23.db.
 - clvm bytecode is now generated and confirmed that the checked-in clvm and WheatLisp code matches the CI compiled code.
-- We have removed the '-r' flag from `chia` as it was being overridden in most cases by the `-r` for restart flag to `wheat start`. Use `wheat --root-path` instead.
+- We have removed the '-r' flag from `apple` as it was being overridden in most cases by the `-r` for restart flag to `wheat start`. Use `wheat --root-path` instead.
 - `wheat -h` now recommends `wheat netspace -d 192` which is approximately one hours worth of sub blocks. Use `-d 1000` to get the same estimate of netspace as the RPC and GUI.
 - `wheat show -c` now displays in MiB and the GUI has been changed to MiB to match.
 - `wheat configure` now accepts the shorter `-upnp` and `-log-level` arguments also.
@@ -1110,7 +1110,7 @@ the blspy/bls-signatures library.
 
 ### Deprecated
 
-- Removed legacy scripts such as chia-stop-server, chia-restart-harvester, etc.
+- Removed legacy scripts such as apple-stop-server, apple-restart-harvester, etc.
 
 ## [1.0beta8] aka Beta 1.8 - 2020-07-16
 
@@ -1289,8 +1289,8 @@ relic. We will make a patch available for these systems shortly.
 
 - In beta 1.5 we introduced a bug in aggsig and aggsig-me that we have fixed in this release. That forced a hard fork of the chain so coins and balances are lost from beta 1.5. There is no impact on existing plots.
 - Starting and stopping servers now works much more reliably.
-- `chia-check-plots` uses the plot root and checks the plots in the same manner as harvester.
-- `chia-check-plots` now does not override plots.yaml, which means concurrent plots will properly be added to plots.yaml.
+- `apple-check-plots` uses the plot root and checks the plots in the same manner as harvester.
+- `apple-check-plots` now does not override plots.yaml, which means concurrent plots will properly be added to plots.yaml.
 - Fixed and issue where [Relic](https://github.com/relic-toolkit/relic) and thus blspy would crash on processors older than Haswell as they don't support lzc.
 - Some non-critical networking errors are no longer logged.
 - Blocks with compact proofs of time are now able to be updated into the node database.
@@ -1304,13 +1304,13 @@ relic. We will make a patch available for these systems shortly.
 ### Added
 
 - This release is primarily a maintenance release for Beta 1.4.
-- We have added an option to `chia-create-plots` to specify the second temporary directory. Creating a plot is a three step process. First a working file ending in `.dat.tmp` is created. This file is usually 5 times larger than the final plot file. In the later stages of plotting a second temp file is created ending in `.dat.2.tmp` which will grow to the size of the final plot file. In the final step, the `.dat.2.tmp` is copied to the final `.dat` plot file. You can now optionally set the directory for the `.dat.2.tmp` file with the `-2` flag. An example use case is plotting on a ramdisk and writing both the second temp file and the final file out to an SSD - `chia-create-plots -n 1 -k 30 -t /mnt/ramdisk -2 /mnt/SSD -d /mnt/SSD`.
+- We have added an option to `apple-create-plots` to specify the second temporary directory. Creating a plot is a three step process. First a working file ending in `.dat.tmp` is created. This file is usually 5 times larger than the final plot file. In the later stages of plotting a second temp file is created ending in `.dat.2.tmp` which will grow to the size of the final plot file. In the final step, the `.dat.2.tmp` is copied to the final `.dat` plot file. You can now optionally set the directory for the `.dat.2.tmp` file with the `-2` flag. An example use case is plotting on a ramdisk and writing both the second temp file and the final file out to an SSD - `chia-create-plots -n 1 -k 30 -t /mnt/ramdisk -2 /mnt/SSD -d /mnt/SSD`.
 
 ### Changed
 
 - `wheat init` properly migrates from previous versions including the k>=32 workaround. Additionally, the farming target key is checked to make sure that it is the valid and correct public key format.
 - We have implemented a workaround for the `wheat start` issues some were having upon crash or reboot. We will be rebuilding start and stop to be robust across platforms.
-- This release re-includes `chia-start-harvester`.
+- This release re-includes `apple-start-harvester`.
 - Coloured coins now have a prefix to help identify them. When sending transactions, the new prefix is incompatible with older clients.
 - The user interface now refers to wheat coins with their correct currency code of WHEAT.
 - The next release will now be in the dev branch instead of the e.g. beta-1.5. Additionally we are enforcing linear merge into dev and prefer rebase merges or partial squash merges of particularly chatty commit histories.
@@ -1348,7 +1348,7 @@ relic. We will make a patch available for these systems shortly.
 
 ### Changed
 
-- Most scripts have been removed in favor of wheat action commands. You can run `wheat version` or `wheat start node` for example. Just running `chia` will show you more options. However `chia-create-plots` continues to use the hyphenated form. Also it's now `wheat generate keys` as another example.
+- Most scripts have been removed in favor of wheat action commands. You can run `wheat version` or `wheat start node` for example. Just running `apple` will show you more options. However `apple-create-plots` continues to use the hyphenated form. Also it's now `wheat generate keys` as another example.
 - Wheat start commands like `wheat start farmer` and `wheat stop node` now keep track of process IDs in a run/ directory in your configuration directory. `wheat stop` is unlikely to work on Windows native for now. If `wheat start -r node` doesn't work you can force the run/ directory to be reset with `wheat start -f node`.
 - We suggest you take a look at our [Upgrading documentation](https://github.com/WheatNetwork/wheat-blockchain/wiki/Updating-beta-software) if you aren't performing a new install.
 - blspy now has libsodium included in the MacOS and Linux binary wheels.
@@ -1367,7 +1367,7 @@ relic. We will make a patch available for these systems shortly.
 - uPnP support on Windows may be broken. However, Windows nodes will be able to connect to other nodes and, once connected, participate fully in the network.
 - Coins are not currently reserved as part of trade offers and thus could potentially be spent before the offer is accepted resulting in a failed offer transaction.
 - Currently, there is no way to restore a Coloured Coin Wallet.
-- The `wheat stop all` command sometimes fails, use `chia-stop-all` instead. In windows, use the task manager to stop the servers.
+- The `wheat stop all` command sometimes fails, use `apple-stop-all` instead. In windows, use the task manager to stop the servers.
 
 ## [1.0beta3] aka Beta 1.3 - 2020-04-08
 
@@ -1376,7 +1376,7 @@ relic. We will make a patch available for these systems shortly.
 - Windows, WSL 2, Linux and MacOS installation is significantly streamlined. There is a new Windows installer for the Wallet GUI (huge thanks to @dkackman).
 - All installs can now be from the source repository or just the binary dependencies on WSL 2, most modern Linuxes, and MacOS Catalina. Binary support is for both Python 3.7 and 3.8.
 - There is a new migration tool to move from Beta1 (or 2) to Beta3. It should move everything except your plots.
-- There is a new command `wheat init` that will migrate files and generate your initial configuration. If you want to use the Wallet or farm, you will also have to `chia-generate-keys`. You can read step by step instructions for [upgrading from a previous beta release](https://github.com/WheatNetwork/wheat-blockchain/wiki/Updating-beta-software). If you've set `$WHEAT_ROOT` you will have to make sure your existing configuration remains compatible manually.
+- There is a new command `wheat init` that will migrate files and generate your initial configuration. If you want to use the Wallet or farm, you will also have to `apple-generate-keys`. You can read step by step instructions for [upgrading from a previous beta release](https://github.com/WheatNetwork/wheat-blockchain/wiki/Updating-beta-software). If you've set `$WHEAT_ROOT` you will have to make sure your existing configuration remains compatible manually.
 - Wallet has improved paper wallet recovery support.
 - We now also support restoring old wallets with only the wallet_sk and wallet_target. Beta3's Wallet will re-sync from scratch.
 - We've made lots of little improvements that should speed up node syncing
@@ -1384,7 +1384,7 @@ relic. We will make a patch available for these systems shortly.
 
 ### Changed
 
-- `chia-restart-harvester` has been renamed from `chia-start-harvester` to better reflect its functionality. Use it to restart a harvester that's farming so that it will pick up newly finished plots.
+- `apple-restart-harvester` has been renamed from `apple-start-harvester` to better reflect its functionality. Use it to restart a harvester that's farming so that it will pick up newly finished plots.
 - We made the Wallet configurable to connect to a remote trusted node.
 - We now have farmers reconnect to their trusted node if they lose contact.
 - We updated our miniupnpc dependency to version 2.1.
@@ -1421,7 +1421,7 @@ relic. We will make a patch available for these systems shortly.
 
 ### Changed
 
-- We have revamped the wheat management command line. To start a farmer all you have to do is start the venv with `. ./activate` and then type `chia-start-farmer &`. The [README.md](https://github.com/WheatNetwork/wheat-blockchain/blob/main/README.md) has been updated to reflect the new commands.
+- We have revamped the wheat management command line. To start a farmer all you have to do is start the venv with `. ./activate` and then type `apple-start-farmer &`. The [README.md](https://github.com/WheatNetwork/wheat-blockchain/blob/main/README.md) has been updated to reflect the new commands.
 - We have moved all node to node communication to TLS 1.3 by default. For now, all TLS is unauthenticated but certain types of over the wire node to node communications will have the ability to authenticate both by certificate and by inter protocol signature. Encrypting over the wire by default stops casual snooping of transaction origination, light wallet to trusted node communication, and harvester-farmer-node communication for example. This leaves only the mempool and the chain itself open to casual observation by the public and the various entities around the world.
 - Configuration directories have been moved to a default location of HomeDirectory/.wheat/release/config, plots/ db/, wallet/ etc. This can be overridden by `export WHEAT_ROOT=~/.wheat` for example which would then put the plots directory in `HomeDirectory/.wheat/plots`.
 - The libraries chia-pos, chia-fast-vdf, and chia-bip-158 have been moved to their own repositories: [chiapos](https://github.com/Chia-Network/chiapos), [chiavdf](https://github.com/Chia-Network/chiavdf), and [chaibip158](https://github.com/Chia-Network/chiabip158). They are brought in by wheat-blockchain at install time. Our BLS signature library remains at [bls-signatures](https://github.com/Chia-Network/bls-signatures).

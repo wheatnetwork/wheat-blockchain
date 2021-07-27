@@ -30,24 +30,20 @@ python -m venv venv
 python -m pip install --upgrade pip
 pip install wheel pep517
 pip install pywin32
-pip install pyinstaller==4.2
+pip install pyinstaller==4.4
 pip install setuptools_scm
 
 Write-Output "   ---"
 Write-Output "Get WHEAT_INSTALLER_VERSION"
 # The environment variable WHEAT_INSTALLER_VERSION needs to be defined
-$env:WHEAT_INSTALLER_VERSION = python .\build_scripts\installer-version.py -win
-
-if (-not (Test-Path env:WHEAT_INSTALLER_VERSION)) {
-  $env:WHEAT_INSTALLER_VERSION = '1.2.17'
-}
+$env:WHEAT_INSTALLER_VERSION = '1.2.202'
 Write-Output "Wheat Version is: $env:WHEAT_INSTALLER_VERSION"
 Write-Output "   ---"
 
 Write-Output "   ---"
 Write-Output "Build wheat-blockchain wheels"
 Write-Output "   ---"
-pip wheel --use-pep517 --extra-index-url https://pypi.chia.net/simple/ -f . --wheel-dir=.\build_scripts\win_build .
+pip wheel --use-pep517 --extra-index-url https://pypi.chia.net/simple/ -f . --wheel-dir=.\build_scripts\win_build . --use-feature=in-tree-build
 
 Write-Output "   ---"
 Write-Output "Install wheat-blockchain wheels into venv with pip"
