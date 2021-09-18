@@ -25,15 +25,7 @@ sudo rm -rf dist
 mkdir dist
 
 echo "Install pyinstaller and build bootloaders for M1"
-#pip install pyinstaller==4.3
-# Once there is a 4.4, we can clone that tag and build that
-# M1 support isn't in a tag yet.
-# Alternatively, if the m1 bootloaders are distributed with pip in the future, can just use those
-git clone https://github.com/pyinstaller/pyinstaller.git
-cd pyinstaller/bootloader
-python ./waf all
-pip install ..
-cd ../..
+pip install pyinstaller==4.5
 
 echo "Create executables with pyinstaller"
 SPEC_FILE=$(python -c 'import wheat; print(wheat.PYINSTALLER_SPEC_PATH)')
@@ -97,7 +89,7 @@ ls -lh final_installer
 if [ "$NOTARIZE" ]; then
 	echo "Notarize $DMG_NAME on ci"
 	cd final_installer || exit
-  notarize-cli --file=$DMG_NAME --bundle-id net.wheat.blockchain \
+  notarize-cli --file=$DMG_NAME --bundle-id network.wheat.blockchain \
 	--username "$APPLE_NOTARIZE_USERNAME" --password "$APPLE_NOTARIZE_PASSWORD"
   echo "Notarization step complete"
 else
@@ -108,7 +100,7 @@ fi
 #
 # Ask for username and password. password should be an app specific password.
 # Generate app specific password https://support.apple.com/en-us/HT204397
-# xcrun altool --notarize-app -f Wheat-0.1.X.dmg --primary-bundle-id net.wheat.blockchain -u username -p password
+# xcrun altool --notarize-app -f Wheat-0.1.X.dmg --primary-bundle-id network.wheat.blockchain -u username -p password
 # xcrun altool --notarize-app; -should return REQUEST-ID, use it in next command
 #
 # Wait until following command return a success message".

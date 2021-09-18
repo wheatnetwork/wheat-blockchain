@@ -232,3 +232,10 @@ class WalletRpcClient(RpcClient):
             PoolWalletInfo.from_json_dict(json_dict["state"]),
             [TransactionRecord.from_json_dict(tr) for tr in json_dict["unconfirmed_transactions"]],
         )
+
+    async def recover_pool_nft(self, contract_hash: str, launcher_hash: str, coins: List[Coin]) -> Dict:
+        return await self.fetch("recover_pool_nft", {
+            "launcher_hash": launcher_hash,
+            "contract_hash": contract_hash,
+            "coins": coins,
+        })

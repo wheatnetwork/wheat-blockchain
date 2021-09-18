@@ -20,11 +20,24 @@ network_overrides: &network_overrides
       NETWORK_TYPE: 1
       GENESIS_PRE_FARM_POOL_PUZZLE_HASH: "7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7"
       GENESIS_PRE_FARM_FARMER_PUZZLE_HASH: "7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7"
+    testnet7:
+      DIFFICULTY_CONSTANT_FACTOR: 10052721566054
+      GENESIS_CHALLENGE: 19a4afe210a506ca031a681a2209d3b2681faf50cdd61633e6511b59ea300b66
+      GENESIS_PRE_FARM_FARMER_PUZZLE_HASH: 7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7
+      GENESIS_PRE_FARM_POOL_PUZZLE_HASH: 7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7
+      MIN_PLOT_SIZE: 18
+      NETWORK_TYPE: 1
+      MEMPOOL_BLOCK_BUFFER: 10
+      EPOCH_BLOCKS: 768
+      DIFFICULTY_STARTING: 30
+      RUST_CONDITION_CHECKER: 0
   config:
     mainnet:
       address_prefix: "wheat"
       default_full_node_port: 21333
     testnet0:
+      address_prefix: "twheat"
+    testnet7:
       address_prefix: "twheat"
       default_full_node_port: 23333
 
@@ -52,7 +65,7 @@ daemon_ssl:
 logging: &logging
   log_stdout: False  # If True, outputs to stdout instead of a file
   log_filename: "log/debug.log"
-  log_level: "INFO"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
+  log_level: "WARNING"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
   log_maxfilesrotation: 7 #  Max files in rotation. Default value 7 if the key is not set
   log_syslog: False  # If True, outputs to SysLog host and port specified
   log_syslog_host: "localhost"  # Send logging messages to a remote or local Unix syslog
@@ -69,7 +82,12 @@ harvester:
   start_rpc_server: True
   rpc_port: 21560
   num_threads: 30
-  plot_loading_frequency_seconds: 120
+  plots_refresh_parameter:
+    interval_seconds: 120 # The interval in seconds to refresh the plot file manager
+    retry_invalid_seconds: 1200 # How long to wait before re-trying plots which failed to load
+    batch_size: 300 # How many plot files the harvester processes before it waits batch_sleep_milliseconds
+    batch_sleep_milliseconds: 1 # Milliseconds the harvester sleeps between batch processing
+
 
   # If True use parallel reads in chiapos
   parallel_read: True
@@ -136,7 +154,7 @@ farmer:
 # Don't run this unless you want to run VDF clients on the local machine.
 timelord_launcher:
   # The server where the VDF clients will connect to.
-  port: 21000
+  port: 8000
   # Number of VDF client processes to keep alive in the local machine.
   process_count: 3
   logging: *logging
@@ -144,7 +162,7 @@ timelord_launcher:
 
 timelord:
   # The timelord server (if run) will run on this port
-  port: 21446
+  port: 21000
   # Provides a list of VDF clients expected to connect to this timelord.
   # For each client, an IP is provided, together with the estimated iterations per second.
   vdf_clients:

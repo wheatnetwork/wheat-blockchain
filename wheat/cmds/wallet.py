@@ -1,3 +1,4 @@
+import sys
 from typing import Optional
 
 import click
@@ -48,12 +49,32 @@ def get_transaction_cmd(wallet_rpc_port: Optional[int], fingerprint: int, id: in
     required=True,
 )
 @click.option("--verbose", "-v", count=True, type=int)
-def get_transactions_cmd(wallet_rpc_port: Optional[int], fingerprint: int, id: int, offset: int, verbose: bool) -> None:
-    extra_params = {"id": id, "verbose": verbose, "offset": offset}
+@click.option(
+    "--paginate/--no-paginate",
+    default=None,
+    help="Prompt for each page of data.  Defaults to true for interactive consoles, otherwise false.",
+)
+def get_transactions_cmd(
+    wallet_rpc_port: Optional[int],
+    fingerprint: int,
+    id: int,
+    offset: int,
+    verbose: bool,
+    paginate: Optional[bool],
+) -> None:
+    extra_params = {"id": id, "verbose": verbose, "offset": offset, "paginate": paginate}
     import asyncio
     from .wallet_funcs import execute_with_wallet, get_transactions
 
     asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, get_transactions))
+
+    # The flush/close avoids output like below when piping through `head -n 1`
+    # which will close stdout.
+    #
+    # Exception ignored in: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>
+    # BrokenPipeError: [Errno 32] Broken pipe
+    sys.stdout.flush()
+    sys.stdout.close()
 
 
 @wallet_cmd.command("send", short_help="Send wheat to another wallet")
@@ -142,3 +163,24 @@ def delete_unconfirmed_transactions_cmd(wallet_rpc_port: Optional[int], id, fing
     from .wallet_funcs import execute_with_wallet, delete_unconfirmed_transactions
 
     asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, delete_unconfirmed_transactions))
+
+
+@wallet_cmd.command("recover_pool_nft", short_help="Recover coins in pool nft contract")
+@click.option(
+    "--contract-hash",
+    help="Set the nft contract hash",
+    type=str,
+    default=None,
+)
+@click.option(
+    "--launcher-hash",
+    help="Set the launcher hash, you should get it from chia wallet",
+    type=str,
+    default=None,
+)
+@click.option("-f", "--fingerprint", help="Set the fingerprint to specify which wallet to use", type=int)
+def recover_pool_nft(wallet_rpc_port: Optional[int], contract_hash: str, launcher_hash: str, fingerprint: int):
+    import asyncio
+    from .wallet_funcs import execute_with_wallet, recover_pool_nft
+    extra_params = {"contract_hash": contract_hash, "launcher_hash": launcher_hash}
+    asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, recover_pool_nft))

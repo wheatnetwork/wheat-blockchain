@@ -18,7 +18,7 @@ If ($LastExitCode -gt 0){
 }
 else
 {
-    Set-Location -Path ..\.. -PassThru
+    Set-Location -Path ../.. -PassThru
     Write-Output "miniupnpc download successful."
 }
 
@@ -30,20 +30,25 @@ python -m venv venv
 python -m pip install --upgrade pip
 pip install wheel pep517
 pip install pywin32
-pip install pyinstaller==4.4
+pip install pyinstaller==4.5
 pip install setuptools_scm
 
 Write-Output "   ---"
 Write-Output "Get WHEAT_INSTALLER_VERSION"
 # The environment variable WHEAT_INSTALLER_VERSION needs to be defined
-$env:WHEAT_INSTALLER_VERSION = '1.2.300'
+$env:WHEAT_INSTALLER_VERSION = python .\build_scripts\installer-version.py -win
+
+if (-not (Test-Path env:WHEAT_INSTALLER_VERSION)) {
+  $env:WHEAT_INSTALLER_VERSION = '0.0.0'
+  Write-Output "WARNING: No environment variable WHEAT_INSTALLER_VERSION set. Using 0.0.0"
+  }
 Write-Output "Wheat Version is: $env:WHEAT_INSTALLER_VERSION"
 Write-Output "   ---"
 
 Write-Output "   ---"
 Write-Output "Build wheat-blockchain wheels"
 Write-Output "   ---"
-pip wheel --use-pep517 --extra-index-url https://pypi.chia.net/simple/ -f . --wheel-dir=.\build_scripts\win_build . --use-feature=in-tree-build
+pip wheel --use-pep517 --extra-index-url https://pypi.chia.net/simple/ -f . --wheel-dir=.\build_scripts\win_build .
 
 Write-Output "   ---"
 Write-Output "Install wheat-blockchain wheels into venv with pip"

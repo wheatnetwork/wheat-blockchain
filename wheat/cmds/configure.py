@@ -92,7 +92,8 @@ def configure(
         if testnet == "true" or testnet == "t":
             print("Setting Testnet")
             testnet_port = "23333"
-            testnet_introducer = "beta1_introducer.wheat.network"
+            testnet_introducer = "beta_introducer.wheat.network"
+            testnet_dns_introducer = "dns-introducer-testnet.wheat.network"
             testnet = "testnet7"
             config["full_node"]["port"] = int(testnet_port)
             config["full_node"]["introducer_peer"]["port"] = int(testnet_port)
@@ -102,6 +103,7 @@ def configure(
             config["wallet"]["introducer_peer"]["port"] = int(testnet_port)
             config["introducer"]["port"] = int(testnet_port)
             config["full_node"]["introducer_peer"]["host"] = testnet_introducer
+            config["full_node"]["dns_servers"] = [testnet_dns_introducer]
             config["selected_network"] = testnet
             config["harvester"]["selected_network"] = testnet
             config["pool"]["selected_network"] = testnet
@@ -118,6 +120,7 @@ def configure(
             print("Setting Mainnet")
             mainnet_port = "21333"
             mainnet_introducer = "introducer.wheat.network"
+            mainnet_dns_introducer = "dns-introducer.wheat.network"
             net = "mainnet"
             config["full_node"]["port"] = int(mainnet_port)
             config["full_node"]["introducer_peer"]["port"] = int(mainnet_port)
@@ -127,6 +130,7 @@ def configure(
             config["wallet"]["introducer_peer"]["port"] = int(mainnet_port)
             config["introducer"]["port"] = int(mainnet_port)
             config["full_node"]["introducer_peer"]["host"] = mainnet_introducer
+            config["full_node"]["dns_servers"] = [mainnet_dns_introducer]
             config["selected_network"] = net
             config["harvester"]["selected_network"] = net
             config["pool"]["selected_network"] = net

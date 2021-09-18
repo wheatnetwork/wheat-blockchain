@@ -44,6 +44,9 @@ async def get_transaction(args: dict, wallet_client: WalletRpcClient, fingerprin
 
 async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     wallet_id = args["id"]
+    paginate = args["paginate"]
+    if paginate is None:
+        paginate = sys.stdout.isatty()
     txs: List[TransactionRecord] = await wallet_client.get_transactions(wallet_id)
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
     name = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
@@ -51,7 +54,7 @@ async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerpri
         print("There are no transactions to this address")
 
     offset = args["offset"]
-    num_per_screen = 5
+    num_per_screen = 5 if paginate else len(txs)
     for i in range(offset, len(txs), num_per_screen):
         for j in range(0, num_per_screen):
             if i + j >= len(txs):
@@ -251,3 +254,32 @@ async def execute_with_wallet(
             print(f"Exception from 'wallet' {e}")
     wallet_client.close()
     await wallet_client.await_closed()
+
+
+async def recover_pool_nft(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    contract_hash_bytes32 = args["contract_hash"]
+    launcher_hash = args["launcher_hash"]
+    delay = 604800
+
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+    self_hostname = config["self_hostname"]
+    full_node_rpc_port = config["full_node"]["rpc_port"]
+    node_client = await FullNodeRpcClient.create(self_hostname, uint16(full_node_rpc_port), DEFAULT_ROOT_PATH, config)
+
+    coin_records = await node_client.get_coin_records_by_puzzle_hash(contract_hash_bytes32, False)
+    # expired coins
+    coins = [coin_record.coin for coin_record in coin_records if coin_record.timestamp <= int(time.time()) - delay]
+    if not coins:
+        print("no expired coins")
+        return
+    print("found", len(coins), "expired coins, total amount:", sum(coin.amount for coin in coins))
+    tx = await wallet_client.recover_pool_nft(launcher_hash, contract_hash, coins)
+    res = await node_client.push_tx(tx)
+    if "success" not in res or res["success"] is False:
+        if "error" in res:
+            error = res["error"]
+            print(f"Error: {error}")
+        else:
+            print(f"INFO: {res}")
+    else:
+        print("tx pushed")

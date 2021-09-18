@@ -627,7 +627,7 @@ evolve
 exact
 example
 excess
-ewheatange
+exchange
 excite
 exclude
 excuse

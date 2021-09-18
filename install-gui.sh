@@ -38,7 +38,7 @@ if [ "$(uname)" = "Linux" ]; then
 	elif type yum && [ -f /etc/rocky-release ] || [ -f /etc/fedora-release ]; then
                 # RockyLinux
                 echo "Installing on RockyLinux/Fedora"
-                dnf module enable nodejs:12
+                sudo dnf module enable nodejs:12
                 sudo dnf install -y nodejs
         fi
 
@@ -95,6 +95,7 @@ if [ ! "$CI" ]; then
 	npm install
 	npm audit fix || true
 	npm run build
+	python ../installhelper.py
 else
 	echo "Skipping node.js in install.sh on MacOS ci."
 fi

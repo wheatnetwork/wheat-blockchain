@@ -22,7 +22,7 @@ sudo rm -rf dist
 mkdir dist
 
 echo "Create executables with pyinstaller"
-pip install pyinstaller==4.2
+pip install pyinstaller==4.5
 SPEC_FILE=$(python -c 'import wheat; print(wheat.PYINSTALLER_SPEC_PATH)')
 pyinstaller --log-level=INFO "$SPEC_FILE"
 LAST_EXIT_CODE=$?
@@ -45,7 +45,7 @@ if [ "$LAST_EXIT_CODE" -ne 0 ]; then
 fi
 
 electron-packager . Wheat --asar.unpack="**/daemon/**" --platform=darwin \
---icon=src/assets/img/Wheat.icns --overwrite --app-bundle-id=net.wheat.blockchain \
+--icon=src/assets/img/Wheat.icns --overwrite --app-bundle-id=network.wheat.blockchain \
 --appVersion=$WHEAT_INSTALLER_VERSION
 LAST_EXIT_CODE=$?
 if [ "$LAST_EXIT_CODE" -ne 0 ]; then
@@ -82,7 +82,7 @@ fi
 if [ "$NOTARIZE" ]; then
 	echo "Notarize $DMG_NAME on ci"
 	cd final_installer || exit
-  notarize-cli --file=$DMG_NAME --bundle-id net.wheat.blockchain \
+  notarize-cli --file=$DMG_NAME --bundle-id network.wheat.blockchain \
 	--username "$APPLE_NOTARIZE_USERNAME" --password "$APPLE_NOTARIZE_PASSWORD"
   echo "Notarization step complete"
 else
@@ -93,7 +93,7 @@ fi
 #
 # Ask for username and password. password should be an app specific password.
 # Generate app specific password https://support.apple.com/en-us/HT204397
-# xcrun altool --notarize-app -f Wheat-0.1.X.dmg --primary-bundle-id net.chia.blockchain -u username -p password
+# xcrun altool --notarize-app -f Wheat-0.1.X.dmg --primary-bundle-id network.wheat.blockchain -u username -p password
 # xcrun altool --notarize-app; -should return REQUEST-ID, use it in next command
 #
 # Wait until following command return a success message".
