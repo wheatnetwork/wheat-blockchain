@@ -44,7 +44,7 @@ class ConsensusConstants:
     MAX_VDF_WITNESS_SIZE: int  # The maximum number of classgroup elements within an n-wesolowski proof
     # Size of mempool = 10x the size of block
     MEMPOOL_BLOCK_BUFFER: int
-    # Max coin amount uint(1 << 64). This allows coin amounts to fit in 64 bits. This is around 18Mwheat.
+    # Max coin amount uint(1 << 64). This allows coin amounts to fit in 64 bits. This is around 18M wheat.
     MAX_COIN_AMOUNT: int
     # Max block cost in clvm cost units
     MAX_BLOCK_COST_CLVM: int
@@ -54,7 +54,6 @@ class ConsensusConstants:
     WEIGHT_PROOF_THRESHOLD: uint8
     WEIGHT_PROOF_RECENT_BLOCKS: uint32
     MAX_BLOCK_COUNT_PER_REQUESTS: uint32
-    RUST_CONDITION_CHECKER: uint64
     BLOCKS_CACHE_SIZE: uint32
     NETWORK_TYPE: int
     MAX_GENERATOR_SIZE: uint32

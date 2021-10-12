@@ -33,7 +33,7 @@ async def kill_processes():
 
 
 def find_vdf_client() -> pathlib.Path:
-    p = pathlib.Path(pkg_resources.get_distribution("wheatvdf").location) / "vdf_client"
+    p = pathlib.Path(pkg_resources.get_distribution("chiavdf").location) / "vdf_client"
     if p.is_file():
         return p
     raise FileNotFoundError("can't find vdf_client binary")
@@ -79,9 +79,10 @@ async def spawn_process(host: str, port: int, counter: int):
 
 async def spawn_all_processes(config: Dict, net_config: Dict):
     await asyncio.sleep(5)
+    hostname = net_config["self_hostname"] if "host" not in config else config["host"]
     port = config["port"]
     process_count = config["process_count"]
-    awaitables = [spawn_process(net_config["self_hostname"], port, i) for i in range(process_count)]
+    awaitables = [spawn_process(hostname, port, i) for i in range(process_count)]
     await asyncio.gather(*awaitables)
 
 

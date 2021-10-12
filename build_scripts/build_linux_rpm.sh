@@ -61,7 +61,7 @@ cp package.json package.json.orig
 jq --arg VER "$WHEAT_INSTALLER_VERSION" '.version=$VER' package.json > temp.json && mv temp.json package.json
 
 electron-packager . wheat-blockchain --asar.unpack="**/daemon/**" --platform=linux \
---icon=src/assets/img/Wheat.icns --overwrite --app-bundle-id=net.wheat.blockchain \
+--icon=src/assets/img/Wheat.icns --overwrite --app-bundle-id=network.wheat.blockchain \
 --appVersion=$WHEAT_INSTALLER_VERSION
 LAST_EXIT_CODE=$?
 

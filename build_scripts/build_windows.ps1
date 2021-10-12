@@ -13,7 +13,7 @@ Write-Output "   ---"
 Invoke-WebRequest -Uri "https://pypi.chia.net/simple/miniupnpc/miniupnpc-2.2.2-cp39-cp39-win_amd64.whl" -OutFile "miniupnpc-2.2.2-cp39-cp39-win_amd64.whl"
 Write-Output "Using win_amd64 python 3.9 wheel from https://github.com/miniupnp/miniupnp/pull/475 (2.2.0-RC1)"
 Write-Output "Actual build from https://github.com/miniupnp/miniupnp/commit/7783ac1545f70e3341da5866069bde88244dd848"
-If ($LastExitCode -gt 0){
+If ($LastExitCode -gt 0) {
     Throw "Failed to download miniupnpc!"
 }
 else
@@ -27,6 +27,7 @@ Write-Output "Create venv - python3.9 is required in PATH"
 Write-Output "   ---"
 python -m venv venv
 . .\venv\Scripts\Activate.ps1
+Copy-Item E:/chia/dnspython/* ./venv/Lib/site-packages/ -recurse -force
 python -m pip install --upgrade pip
 pip install wheel pep517
 pip install pywin32
@@ -106,6 +107,15 @@ $packageVersion = "$env:WHEAT_INSTALLER_VERSION"
 $packageName = "Wheat-$packageVersion"
 
 Write-Output "packageName is $packageName"
+
+# Write-Output "   ---"
+# Write-Output "fix version in package.json"
+# choco install jq
+# cp package.json package.json.orig
+# jq --arg VER "$env:WHEAT_INSTALLER_VERSION" '.version=$VER' package.json > temp.json
+# rm package.json
+# mv temp.json package.json
+# Write-Output "   ---"
 
 Write-Output "   ---"
 Write-Output "electron-packager"

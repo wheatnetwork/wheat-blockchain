@@ -4,6 +4,7 @@ min_mainnet_k_size: 32
 ping_interval: 120
 self_hostname: &self_hostname "localhost"
 daemon_port: 21200
+daemon_max_message_size: 50000000 # maximum size of RPC message in bytes
 inbound_rate_limit_percent: 100
 outbound_rate_limit_percent: 30
 
@@ -30,7 +31,6 @@ network_overrides: &network_overrides
       MEMPOOL_BLOCK_BUFFER: 10
       EPOCH_BLOCKS: 768
       DIFFICULTY_STARTING: 30
-      RUST_CONDITION_CHECKER: 0
   config:
     mainnet:
       address_prefix: "wheat"
@@ -43,7 +43,7 @@ network_overrides: &network_overrides
 
 selected_network: &selected_network "mainnet"
 ALERTS_URL: https://download.wheat.network/notify/mainnet_alert.txt
-WHEAT_ALERTS_PUBKEY: 1a287fd87cb56e926ecefb879a29aae308be01f31980569f6a75a69d2a9a69daefd71fb778d865f7c50d6c967e3025937
+WHEAT_ALERTS_PUBKEY: 89b7fd87cb56e926ecefb879a29aae308be01f31980569f6a75a69d2a9a69daefd71fb778d865f7c50d6c967e3025937
 
 # public ssl ca is included in source code
 # Private ssl ca is used for trusted connections between machines user owns
@@ -154,7 +154,8 @@ farmer:
 # Don't run this unless you want to run VDF clients on the local machine.
 timelord_launcher:
   # The server where the VDF clients will connect to.
-  port: 8000
+  host: *self_hostname
+  port: 21000
   # Number of VDF client processes to keep alive in the local machine.
   process_count: 3
   logging: *logging
@@ -162,7 +163,7 @@ timelord_launcher:
 
 timelord:
   # The timelord server (if run) will run on this port
-  port: 21000
+  port: 21446
   # Provides a list of VDF clients expected to connect to this timelord.
   # For each client, an IP is provided, together with the estimated iterations per second.
   vdf_clients:
@@ -232,6 +233,8 @@ full_node:
 
   # How often to initiate outbound connections to other full nodes.
   peer_connect_interval: 30
+  # How long to wait for a peer connection
+  peer_connect_timeout: 30
   # Accept peers until this number of connections
   target_peer_count: 80
   # Initiate outbound connections until this number is hit.
@@ -260,6 +263,10 @@ full_node:
   # when enabled, the full node will print a pstats profile to the root_dir/profile every second
   # analyze with wheat/utils/profiler.py
   enable_profiler: False
+
+  # this is a debug and profiling facility that logs all SQLite commands to a
+  # separate log file (under logging/sql.log).
+  log_sqlite_cmds: False
 
   # List of trusted DNS seeders to bootstrap from.
   # If you modify this, please change the hardcode as well from FullNode.set_server()
