@@ -21,23 +21,11 @@ network_overrides: &network_overrides
       NETWORK_TYPE: 1
       GENESIS_PRE_FARM_POOL_PUZZLE_HASH: "7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7"
       GENESIS_PRE_FARM_FARMER_PUZZLE_HASH: "7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7"
-    testnet7:
-      DIFFICULTY_CONSTANT_FACTOR: 10052721566054
-      GENESIS_CHALLENGE: 19a4afe210a506ca031a681a2209d3b2681faf50cdd61633e6511b59ea300b66
-      GENESIS_PRE_FARM_FARMER_PUZZLE_HASH: 7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7
-      GENESIS_PRE_FARM_POOL_PUZZLE_HASH: 7417e0f9ad2b186d46c5ad00be271fddcae6461e374213e8862c31a7b79b13d7
-      MIN_PLOT_SIZE: 18
-      NETWORK_TYPE: 1
-      MEMPOOL_BLOCK_BUFFER: 10
-      EPOCH_BLOCKS: 768
-      DIFFICULTY_STARTING: 30
   config:
     mainnet:
       address_prefix: "wheat"
       default_full_node_port: 21333
     testnet0:
-      address_prefix: "twheat"
-    testnet7:
       address_prefix: "twheat"
       default_full_node_port: 23333
 
@@ -65,7 +53,7 @@ daemon_ssl:
 logging: &logging
   log_stdout: False  # If True, outputs to stdout instead of a file
   log_filename: "log/debug.log"
-  log_level: "WARNING"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
+  log_level: "INFO"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
   log_maxfilesrotation: 7 #  Max files in rotation. Default value 7 if the key is not set
   log_syslog: False  # If True, outputs to SysLog host and port specified
   log_syslog_host: "localhost"  # Send logging messages to a remote or local Unix syslog
@@ -212,6 +200,18 @@ full_node:
   # The full node server (if run) will run on this port
   port: 21333
 
+  # controls the sync-to-disk behavior of the database connection. Can be one of:
+  # "on"    enables syncing to disk, minimizes risk of corrupting the DB in
+  #         power-loss, disk failure or kernel panics
+  # "full"  enables extra syncing to disk for additional safety from
+  #         power-failures and kernel panics
+  # "off"   disables syncing, lightens disk load and improves performance.
+  #         increases risk of corrupting DB in power-loss, disk failure or
+  #         kernel panics
+  # "auto"  on/off is decided based on a heuristic of how likely a failure is on
+  #         the particular system we're running on. Defaults to "full".
+  db_sync: auto
+
   # Run multiple nodes with different databases by changing the database_path
   database_path: db/blockchain_v1_CHALLENGE.sqlite
   peer_db_path: db/peer_table_node.sqlite
@@ -335,6 +335,9 @@ wallet:
   rpc_port: 21256
 
   enable_profiler: False
+
+  # see description for full_node.db_sync
+  db_sync: auto
 
   # The minimum height that we care about for our transactions. Set to zero
   # If we are restoring from private key and don't know the height.

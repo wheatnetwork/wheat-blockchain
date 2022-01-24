@@ -14,9 +14,10 @@ from wheat.cmds.start import start_cmd
 from wheat.cmds.stop import stop_cmd
 from wheat.cmds.wallet import wallet_cmd
 from wheat.cmds.plotnft import plotnft_cmd
+from wheat.cmds.plotters import plotters_cmd
 from wheat.util.default_root import DEFAULT_KEYS_ROOT_PATH, DEFAULT_ROOT_PATH
 from wheat.util.keychain import set_keys_root_path, supports_keyring_passphrase
-from wheat.util.ssl import check_ssl
+from wheat.util.ssl_check import check_ssl
 from typing import Optional
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
@@ -66,7 +67,7 @@ def cli(
         set_keys_root_path(Path(keys_root_path))
 
     if passphrase_file is not None:
-        from .passphrase_funcs import cache_passphrase, read_passphrase_from_file
+        from wheat.cmds.passphrase_funcs import cache_passphrase, read_passphrase_from_file
 
         try:
             cache_passphrase(read_passphrase_from_file(passphrase_file))
@@ -118,6 +119,7 @@ cli.add_command(start_cmd)
 cli.add_command(stop_cmd)
 cli.add_command(netspace_cmd)
 cli.add_command(farm_cmd)
+cli.add_command(plotters_cmd)
 
 if supports_keyring_passphrase():
     cli.add_command(passphrase_cmd)

@@ -27,7 +27,6 @@ Write-Output "Create venv - python3.9 is required in PATH"
 Write-Output "   ---"
 python -m venv venv
 . .\venv\Scripts\Activate.ps1
-Copy-Item E:/chia/dnspython/* ./venv/Lib/site-packages/ -recurse -force
 python -m pip install --upgrade pip
 pip install wheel pep517
 pip install pywin32
@@ -45,6 +44,20 @@ if (-not (Test-Path env:WHEAT_INSTALLER_VERSION)) {
   }
 Write-Output "Wheat Version is: $env:WHEAT_INSTALLER_VERSION"
 Write-Output "   ---"
+
+Write-Output "Checking if madmax exists"
+Write-Output "   ---"
+if (Test-Path -Path .\madmax\) {
+    Write-Output "   madmax exists, moving to expected directory"
+    mv .\madmax\ .\venv\lib\site-packages\
+}
+
+Write-Output "Checking if bladebit exists"
+Write-Output "   ---"
+if (Test-Path -Path .\bladebit\) {
+    Write-Output "   bladebit exists, moving to expected directory"
+    mv .\bladebit\ .\venv\lib\site-packages\
+}
 
 Write-Output "   ---"
 Write-Output "Build wheat-blockchain wheels"
@@ -108,14 +121,14 @@ $packageName = "Wheat-$packageVersion"
 
 Write-Output "packageName is $packageName"
 
-# Write-Output "   ---"
-# Write-Output "fix version in package.json"
-# choco install jq
-# cp package.json package.json.orig
-# jq --arg VER "$env:WHEAT_INSTALLER_VERSION" '.version=$VER' package.json > temp.json
-# rm package.json
-# mv temp.json package.json
-# Write-Output "   ---"
+Write-Output "   ---"
+Write-Output "fix version in package.json"
+choco install jq
+cp package.json package.json.orig
+jq --arg VER "$env:WHEAT_INSTALLER_VERSION" '.version=$VER' package.json > temp.json
+rm package.json
+mv temp.json package.json
+Write-Output "   ---"
 
 Write-Output "   ---"
 Write-Output "electron-packager"

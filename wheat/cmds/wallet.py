@@ -163,24 +163,3 @@ def delete_unconfirmed_transactions_cmd(wallet_rpc_port: Optional[int], id, fing
     from .wallet_funcs import execute_with_wallet, delete_unconfirmed_transactions
 
     asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, delete_unconfirmed_transactions))
-
-
-@wallet_cmd.command("recover_pool_nft", short_help="Recover coins in pool nft contract")
-@click.option(
-    "--contract-hash",
-    help="Set the nft contract hash",
-    type=str,
-    default=None,
-)
-@click.option(
-    "--launcher-hash",
-    help="Set the launcher hash, you should get it from chia wallet",
-    type=str,
-    default=None,
-)
-@click.option("-f", "--fingerprint", help="Set the fingerprint to specify which wallet to use", type=int)
-def recover_pool_nft(wallet_rpc_port: Optional[int], contract_hash: str, launcher_hash: str, fingerprint: int):
-    import asyncio
-    from .wallet_funcs import execute_with_wallet, recover_pool_nft
-    extra_params = {"contract_hash": contract_hash, "launcher_hash": launcher_hash}
-    asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, recover_pool_nft))
