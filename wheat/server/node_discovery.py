@@ -311,6 +311,8 @@ class FullNodeDiscovery:
                     peer = conn.get_peer_info()
                     if peer is None:
                         continue
+                    if peer.port == 22333 or conn.server_port == 22333:
+                        continue
                     group = peer.get_group()
                     groups.add(group)
 

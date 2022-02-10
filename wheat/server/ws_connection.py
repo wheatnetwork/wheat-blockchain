@@ -137,6 +137,9 @@ class WSWheatConnection:
             if message_type != ProtocolMessageTypes.handshake:
                 raise ProtocolError(Err.INVALID_HANDSHAKE)
 
+            if inbound_handshake.server_port == 22333:
+                raise ProtocolError(Err.INVALID_HANDSHAKE)
+
             if inbound_handshake.network_id != network_id:
                 raise ProtocolError(Err.INCOMPATIBLE_NETWORK_ID)
 
@@ -164,6 +167,10 @@ class WSWheatConnection:
                 raise ProtocolError(Err.INVALID_HANDSHAKE)
 
             inbound_handshake = Handshake.from_bytes(message.data)
+
+            if inbound_handshake.server_port == 22333:
+                raise ProtocolError(Err.INVALID_HANDSHAKE)
+
             if inbound_handshake.network_id != network_id:
                 raise ProtocolError(Err.INCOMPATIBLE_NETWORK_ID)
             outbound_handshake = make_msg(
