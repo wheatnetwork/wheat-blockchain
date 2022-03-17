@@ -3,7 +3,7 @@ import binascii
 import os
 from enum import Enum
 from wheat.plotters.bladebit import get_bladebit_install_info, plot_bladebit
-from wheat.plotters.wheatpos import get_chiapos_install_info, plot_chia
+from wheat.plotters.chiapos import get_chiapos_install_info, plot_wheat
 from wheat.plotters.madmax import get_madmax_install_info, plot_madmax
 from wheat.plotters.install_plotter import install_plotter
 from pathlib import Path
@@ -133,7 +133,7 @@ def build_parser(subparsers, root_path, option_list, name, plotter_desc):
                 type=str,
                 dest="tmpdir",
                 help="Temporary directory 1.",
-                default=str(root_path) + "/",
+                required=True,
             )
         if option is Options.TMP_DIR2:
             parser.add_argument(
@@ -142,7 +142,7 @@ def build_parser(subparsers, root_path, option_list, name, plotter_desc):
                 type=str,
                 dest="tmpdir2",
                 help="Temporary directory 2.",
-                default=str(root_path) + "/",
+                default="",
             )
         if option is Options.FINAL_DIR:
             parser.add_argument(
@@ -151,7 +151,7 @@ def build_parser(subparsers, root_path, option_list, name, plotter_desc):
                 type=str,
                 dest="finaldir",
                 help="Final directory.",
-                default=str(root_path) + "/",
+                required=True,
             )
         if option is Options.BUFF:
             parser.add_argument(
@@ -333,7 +333,7 @@ def call_plotters(root_path: Path, args):
             print(f"Cannot create plotters root path {root_path} {type(e)} {e}.")
     plotters = argparse.ArgumentParser(description="Available options.")
     subparsers = plotters.add_subparsers(help="Available options", dest="plotter")
-    build_parser(subparsers, root_path, wheat_plotter, "chiapos", "Chiapos Plotter")
+    build_parser(subparsers, root_path, wheat_plotter, "chiapos", "Wheatpos Plotter")
     build_parser(subparsers, root_path, madmax_plotter, "madmax", "Madmax Plotter")
     build_parser(subparsers, root_path, bladebit_plotter, "bladebit", "Bladebit Plotter")
     install_parser = subparsers.add_parser("install", description="Install custom plotters.")
@@ -343,7 +343,7 @@ def call_plotters(root_path: Path, args):
     args = plotters.parse_args(args)
 
     if args.plotter == "chiapos":
-        plot_chia(args, wheat_root_path)
+        plot_wheat(args, wheat_root_path)
     if args.plotter == "madmax":
         plot_madmax(args, wheat_root_path, root_path)
     if args.plotter == "bladebit":

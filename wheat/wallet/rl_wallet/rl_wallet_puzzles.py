@@ -7,7 +7,7 @@ from wheat.types.blockchain_format.program import Program
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.condition_opcodes import ConditionOpcode
 from wheat.util.ints import uint64
-from wheat.wallet.wheatlisp import sexp
+from wheat.wallet.chialisp import sexp
 from wheat.wallet.puzzles.load_clvm import load_clvm
 
 RATE_LIMITED_MODE = 1

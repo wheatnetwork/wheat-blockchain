@@ -1,6 +1,7 @@
 from typing import Dict
 
-from wheat.consensus.default_constants import DEFAULT_CONSTANTS, ConsensusConstants
+from wheat.consensus.constants import ConsensusConstants
+from wheat.consensus.default_constants import DEFAULT_CONSTANTS
 
 
 def make_test_constants(test_constants_overrides: Dict) -> ConsensusConstants:

@@ -10,10 +10,12 @@ SERVICES_FOR_GROUP = {
     "timelord": "wheat_timelord_launcher wheat_timelord wheat_full_node".split(),
     "timelord-only": "wheat_timelord".split(),
     "timelord-launcher-only": "wheat_timelord_launcher".split(),
-    "wallet": "wheat_wallet wheat_full_node".split(),
-    "wallet-only": "wheat_wallet".split(),
+    "wallet": "wheat_wallet".split(),
     "introducer": "wheat_introducer".split(),
     "simulator": "wheat_full_node_simulator".split(),
+    "crawler": "wheat_crawler".split(),
+    "seeder": "wheat_crawler wheat_seeder".split(),
+    "seeder-only": "wheat_seeder".split(),
 }
 
 

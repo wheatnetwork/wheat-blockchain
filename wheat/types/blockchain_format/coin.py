@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, List
 
+from clvm.casts import int_to_bytes
+
 from wheat.types.blockchain_format.sized_bytes import bytes32
-from wheat.util.clvm import int_to_bytes
 from wheat.util.hash import std_hash
 from wheat.util.ints import uint64
 from wheat.util.streamable import Streamable, streamable
