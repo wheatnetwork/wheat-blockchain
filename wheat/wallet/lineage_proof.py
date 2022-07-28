@@ -7,8 +7,8 @@ from wheat.util.ints import uint64
 from wheat.util.streamable import Streamable, streamable
 
 
-@dataclass(frozen=True)
 @streamable
+@dataclass(frozen=True)
 class LineageProof(Streamable):
     parent_name: Optional[bytes32] = None
     inner_puzzle_hash: Optional[bytes32] = None

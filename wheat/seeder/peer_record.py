@@ -6,8 +6,8 @@ from wheat.util.ints import uint32, uint64
 from wheat.util.streamable import Streamable, streamable
 
 
-@dataclass(frozen=True)
 @streamable
+@dataclass(frozen=True)
 class PeerRecord(Streamable):
     peer_id: str
     ip_address: str

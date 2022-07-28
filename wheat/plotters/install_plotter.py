@@ -4,7 +4,7 @@ from wheat.plotters.madmax import install_madmax
 
 
 def install_plotter(plotter, root_path):
-    if plotter == "chiapos":
+    if plotter == "wheatpos":
         print("Wheatpos already installed. No action taken.")
         return
     elif plotter == "madmax":

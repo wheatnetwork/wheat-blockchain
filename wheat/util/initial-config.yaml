@@ -26,12 +26,12 @@ network_overrides: &network_overrides
     mainnet:
       address_prefix: "wheat"
       default_full_node_port: 21333
-    testnet7:
+    testnet0:
       address_prefix: "twheat"
       default_full_node_port: 23333
 
 selected_network: &selected_network "mainnet"
-ALERTS_URL: https://download.wheat.network/notify/mainnet_alert.txt
+ALERTS_URL: https://download.wheat.top/notify/mainnet_alert.txt
 WHEAT_ALERTS_PUBKEY: 89b7fd87cb56e926ecefb879a29aae308be01f31980569f6a75a69d2a9a69daefd71fb778d865f7c50d6c967e3025937
 
 # public ssl ca is included in source code
@@ -54,7 +54,7 @@ daemon_ssl:
 logging: &logging
   log_stdout: False  # If True, outputs to stdout instead of a file
   log_filename: "log/debug.log"
-  log_level: "INFO"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
+  log_level: "WARNING"  # Can be CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
   log_maxfilesrotation: 7 #  Max files in rotation. Default value 7 if the key is not set
   log_maxbytesrotation: 52428800 #  Max bytes logged before rotating logs
   log_syslog: False  # If True, outputs to SysLog host and port specified
@@ -72,7 +72,7 @@ seeder:
   crawler_db_path: "crawler.db"
   # Peers used for the initial run.
   bootstrap_peers:
-    - "node.wheat.network"
+    - "node.wheat.top"
   # Only consider nodes synced at least to this height.
   minimum_height: 240000
   # How many of a particular version we need to see before reporting it in the logs
@@ -116,7 +116,7 @@ harvester:
     batch_sleep_milliseconds: 1 # Milliseconds the harvester sleeps between batch processing
 
 
-  # If True use parallel reads in chiapos
+  # If True use parallel reads in wheatpos
   parallel_read: True
 
   logging: *logging
@@ -125,6 +125,7 @@ harvester:
 
   # Plots are searched for in the following directories
   plot_directories: []
+  recursive_plot_scan: False # If True the harvester scans plots recursively in the provided directories.
 
   ssl:
     private_crt:  "config/ssl/harvester/private_harvester.crt"
@@ -262,6 +263,11 @@ full_node:
   #         the particular system we're running on. Defaults to "full".
   db_sync: "auto"
 
+  # the number of threads used to read from the blockchain database
+  # concurrently. There's always only 1 writer, but the number of readers is
+  # configurable
+  db_readers: 4
+
   # Run multiple nodes with different databases by changing the database_path
   database_path: db/blockchain_v2_CHALLENGE.sqlite
   # peer_db_path is deprecated and has been replaced by peers_file_path
@@ -290,6 +296,11 @@ full_node:
   # When creating process pools the process count will generally be the CPU count minus
   # this reserved core count.
   reserved_cores: 0
+
+  # set this to true to not offload heavy lifting into separate child processes.
+  # this option is mostly useful when profiling, since only the main process is
+  # profiled.
+  single_threaded: False
 
   # How often to initiate outbound connections to other full nodes.
   peer_connect_interval: 30
@@ -334,7 +345,7 @@ full_node:
   # List of trusted DNS seeders to bootstrap from.
   # If you modify this, please change the hardcode as well from FullNode.set_server()
   dns_servers:
-    - "dns-introducer.wheat.network"
+    - "dns-introducer.wheat.top"
   farmer_peer:
       host: *self_hostname
       port: 21447
@@ -342,7 +353,7 @@ full_node:
       host: *self_hostname
       port: 21446
   introducer_peer:
-      host: introducer.wheat.network  # Wheat AWS introducer IPv4/IPv6
+      host: introducer.wheat.top  # Wheat AWS introducer IPv4/IPv6
       port: 21333
   wallet_peer:
     host: *self_hostname
@@ -412,7 +423,7 @@ wallet:
   initial_num_public_keys: 100
 
   dns_servers:
-    - "dns-introducer.wheat.network"
+    - "dns-introducer.wheat.top"
 
   full_node_peer:
     host: *self_hostname
@@ -438,7 +449,7 @@ wallet:
   recent_peer_threshold: 6000
 
   introducer_peer:
-    host: introducer.wheat.network # Wheat AWS introducer IPv4/IPv6
+    host: introducer.wheat.top # Wheat AWS introducer IPv4/IPv6
     port: 21333
 
   ssl:
@@ -462,3 +473,6 @@ wallet:
   # if an unknown CAT belonging to us is seen, a wallet will be automatically created
   # the user accepts the risk/responsibility of verifying the authenticity and origin of unknown CATs
   automatically_add_unknown_cats: False
+
+  # Interval to resend unconfirmed transactions, even if previously accepted into Mempool
+  tx_resend_timeout_secs: 1800

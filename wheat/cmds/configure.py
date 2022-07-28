@@ -1,10 +1,9 @@
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import click
 
-from wheat.util.config import get_config_lock, load_config, save_config, str2bool
-from wheat.util.default_root import DEFAULT_ROOT_PATH
+from wheat.util.config import lock_and_load_config, save_config, str2bool
 
 
 def configure(
@@ -24,8 +23,7 @@ def configure(
     seeder_domain_name: str,
     seeder_nameserver: str,
 ):
-    with get_config_lock(root_path, "config.yaml"):
-        config: Dict = load_config(DEFAULT_ROOT_PATH, "config.yaml", acquire_lock=False)
+    with lock_and_load_config(root_path, "config.yaml") as config:
         change_made = False
         if set_node_introducer:
             try:
@@ -75,7 +73,7 @@ def configure(
             levels = ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"]
             if set_log_level in levels:
                 config["logging"]["log_level"] = set_log_level
-                print(f"Logging level updated. Check {DEFAULT_ROOT_PATH}/log/debug.log")
+                print(f"Logging level updated. Check {root_path}/log/debug.log")
                 change_made = True
             else:
                 print(f"Logging level not updated. Use one of: {levels}")
@@ -98,9 +96,9 @@ def configure(
             if testnet == "true" or testnet == "t":
                 print("Setting Testnet")
                 testnet_port = "23333"
-                testnet_introducer = "introducer-testnet0.wheat.network"
-                testnet_dns_introducer = "dns-introducer-testnet0.wheat.network"
-                bootstrap_peers = ["testnet0-node.wheat.network"]
+                testnet_introducer = "introducer-testnet10.wheat.top"
+                testnet_dns_introducer = "dns-introducer-testnet0.wheat.top"
+                bootstrap_peers = ["testnet0-node.wheat.top"]
                 testnet = "testnet0"
                 config["full_node"]["port"] = int(testnet_port)
                 config["full_node"]["introducer_peer"]["port"] = int(testnet_port)
@@ -111,6 +109,7 @@ def configure(
                 config["introducer"]["port"] = int(testnet_port)
                 config["full_node"]["introducer_peer"]["host"] = testnet_introducer
                 config["full_node"]["dns_servers"] = [testnet_dns_introducer]
+                config["wallet"]["introducer_peer"]["host"] = testnet_introducer
                 config["wallet"]["dns_servers"] = [testnet_dns_introducer]
                 config["selected_network"] = testnet
                 config["harvester"]["selected_network"] = testnet
@@ -134,9 +133,9 @@ def configure(
             elif testnet == "false" or testnet == "f":
                 print("Setting Mainnet")
                 mainnet_port = "21333"
-                mainnet_introducer = "introducer.wheat.network"
-                mainnet_dns_introducer = "dns-introducer.wheat.network"
-                bootstrap_peers = ["node.wheat.network"]
+                mainnet_introducer = "introducer.wheat.top"
+                mainnet_dns_introducer = "dns-introducer.wheat.top"
+                bootstrap_peers = ["node.wheat.top"]
                 net = "mainnet"
                 config["full_node"]["port"] = int(mainnet_port)
                 config["full_node"]["introducer_peer"]["port"] = int(mainnet_port)
@@ -147,6 +146,8 @@ def configure(
                 config["introducer"]["port"] = int(mainnet_port)
                 config["full_node"]["introducer_peer"]["host"] = mainnet_introducer
                 config["full_node"]["dns_servers"] = [mainnet_dns_introducer]
+                config["wallet"]["introducer_peer"]["host"] = mainnet_introducer
+                config["wallet"]["dns_servers"] = [mainnet_dns_introducer]
                 config["selected_network"] = net
                 config["harvester"]["selected_network"] = net
                 config["pool"]["selected_network"] = net

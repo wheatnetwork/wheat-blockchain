@@ -5,8 +5,8 @@ from wheat.types.condition_opcodes import ConditionOpcode
 from wheat.util.streamable import Streamable, streamable
 
 
-@dataclass(frozen=True)
 @streamable
+@dataclass(frozen=True)
 class ConditionWithArgs(Streamable):
     """
     This structure is used to store parsed CLVM conditions
