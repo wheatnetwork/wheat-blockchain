@@ -1,9 +1,8 @@
-from wheat.types.blockchain_format.program import SerializedProgram
+from __future__ import annotations
 
-from .load_clvm import load_clvm
+from wheat.types.blockchain_format.serialized_program import SerializedProgram
 
-MOD = SerializedProgram.from_bytes(load_clvm("rom_bootstrap_generator.clvm").as_bin())
+from .load_clvm import load_serialized_clvm_maybe_recompile
 
-
-def get_generator():
-    return MOD
+GENERATOR_MOD: SerializedProgram = load_serialized_clvm_maybe_recompile("rom_bootstrap_generator.clsp")
+GENERATOR2_MOD: SerializedProgram = load_serialized_clvm_maybe_recompile("rom_bootstrap_generator2.clsp")

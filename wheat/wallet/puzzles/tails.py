@@ -1,26 +1,29 @@
-from typing import Tuple, Dict, List, Optional, Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple
 
 from wheat.types.blockchain_format.program import Program
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.spend_bundle import SpendBundle
-from wheat.util.ints import uint64
 from wheat.util.byte_types import hexstr_to_bytes
-from wheat.wallet.cat_wallet.lineage_store import CATLineageStore
-from wheat.wallet.lineage_proof import LineageProof
-from wheat.wallet.puzzles.load_clvm import load_clvm
+from wheat.util.ints import uint64
+from wheat.wallet.cat_wallet.cat_info import CATInfo
 from wheat.wallet.cat_wallet.cat_utils import (
-    CAT_MOD,
+    SpendableCAT,
     construct_cat_puzzle,
     unsigned_spend_bundle_for_spendable_cats,
-    SpendableCAT,
 )
-from wheat.wallet.cat_wallet.cat_info import CATInfo
+from wheat.wallet.cat_wallet.lineage_store import CATLineageStore
+from wheat.wallet.lineage_proof import LineageProof
+from wheat.wallet.payment import Payment
+from wheat.wallet.puzzles.cat_loader import CAT_MOD
+from wheat.wallet.puzzles.load_clvm import load_clvm_maybe_recompile
 from wheat.wallet.transaction_record import TransactionRecord
 
-GENESIS_BY_ID_MOD = load_clvm("genesis_by_coin_id.clvm")
-GENESIS_BY_PUZHASH_MOD = load_clvm("genesis_by_puzzle_hash.clvm")
-EVERYTHING_WITH_SIG_MOD = load_clvm("everything_with_signature.clvm")
-DELEGATED_LIMITATIONS_MOD = load_clvm("delegated_tail.clvm")
+GENESIS_BY_ID_MOD = load_clvm_maybe_recompile("genesis_by_coin_id.clsp")
+GENESIS_BY_PUZHASH_MOD = load_clvm_maybe_recompile("genesis_by_puzzle_hash.clsp")
+EVERYTHING_WITH_SIG_MOD = load_clvm_maybe_recompile("everything_with_signature.clsp")
+DELEGATED_LIMITATIONS_MOD = load_clvm_maybe_recompile("delegated_tail.clsp")
 
 
 class LimitationsProgram:
@@ -78,7 +81,7 @@ class GenesisById(LimitationsProgram):
         wallet.lineage_store = await CATLineageStore.create(
             wallet.wallet_state_manager.db_wrapper, tail.get_tree_hash().hex()
         )
-        await wallet.add_lineage(origin_id, LineageProof(), False)
+        await wallet.add_lineage(origin_id, LineageProof())
 
         minted_cat_puzzle_hash: bytes32 = construct_cat_puzzle(CAT_MOD, tail.get_tree_hash(), cat_inner).get_tree_hash()
 
@@ -89,9 +92,7 @@ class GenesisById(LimitationsProgram):
 
         inner_solution = wallet.standard_wallet.add_condition_to_solution(
             Program.to([51, 0, -113, tail, []]),
-            wallet.standard_wallet.make_solution(
-                primaries=[{"puzzlehash": cat_inner.get_tree_hash(), "amount": amount}],
-            ),
+            wallet.standard_wallet.make_solution(primaries=[Payment(cat_inner.get_tree_hash(), amount)]),
         )
         eve_spend = unsigned_spend_bundle_for_spendable_cats(
             CAT_MOD,
@@ -108,10 +109,7 @@ class GenesisById(LimitationsProgram):
         signed_eve_spend = await wallet.sign(eve_spend)
 
         if wallet.cat_info.my_tail is None:
-            await wallet.save_info(
-                CATInfo(tail.get_tree_hash(), tail),
-                False,
-            )
+            await wallet.save_info(CATInfo(tail.get_tree_hash(), tail))
 
         return tx_record, SpendBundle.aggregate([tx_record.spend_bundle, signed_eve_spend])
 

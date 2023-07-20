@@ -3,5 +3,5 @@
 
 set -e
 
-ln -s /usr/lib/wheat-blockchain/resources/app.asar.unpacked/daemon/wheat /usr/bin/wheat || true
-ln -s /usr/lib/wheat-blockchain/resources/app.asar.unpacked/daemon /opt/wheat || true
+ln -s /opt/wheat/resources/app.asar.unpacked/daemon/wheat /usr/bin/wheat || true
+ln -s /opt/wheat/wheat-blockchain /usr/bin/wheat-blockchain || true

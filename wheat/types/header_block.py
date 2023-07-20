@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import List, Optional
 
 from wheat.types.blockchain_format.foliage import Foliage, FoliageTransactionBlock, TransactionsInfo
 from wheat.types.blockchain_format.reward_chain_block import RewardChainBlock
+from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.blockchain_format.vdf import VDFProof
 from wheat.types.end_of_slot_bundle import EndOfSubSlotBundle
+from wheat.util.ints import uint32, uint128
 from wheat.util.streamable import Streamable, streamable
 
 
@@ -25,31 +29,31 @@ class HeaderBlock(Streamable):
     transactions_info: Optional[TransactionsInfo]  # Reward chain foliage data (tx block additional)
 
     @property
-    def prev_header_hash(self):
+    def prev_header_hash(self) -> bytes32:
         return self.foliage.prev_block_hash
 
     @property
-    def prev_hash(self):
+    def prev_hash(self) -> bytes32:
         return self.foliage.prev_block_hash
 
     @property
-    def height(self):
+    def height(self) -> uint32:
         return self.reward_chain_block.height
 
     @property
-    def weight(self):
+    def weight(self) -> uint128:
         return self.reward_chain_block.weight
 
     @property
-    def header_hash(self):
+    def header_hash(self) -> bytes32:
         return self.foliage.get_hash()
 
     @property
-    def total_iters(self):
+    def total_iters(self) -> uint128:
         return self.reward_chain_block.total_iters
 
     @property
-    def log_string(self):
+    def log_string(self) -> str:
         return "block " + str(self.header_hash) + " sb_height " + str(self.height) + " "
 
     @property

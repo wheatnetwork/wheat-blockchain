@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import click
+
 from wheat.plotters.plotters import call_plotters
 
 
 @click.command(
     "plotters",
-    short_help="Advanced plotting options",
+    help="Advanced plotting options",
     context_settings={"ignore_unknown_options": True},
     add_help_option=False,
 )

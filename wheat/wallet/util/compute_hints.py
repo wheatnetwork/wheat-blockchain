@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import List
 
-from wheat.types.blockchain_format.sized_bytes import bytes32
-from wheat.types.condition_opcodes import ConditionOpcode
 from wheat.types.blockchain_format.program import INFINITE_COST
+from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.coin_spend import CoinSpend
+from wheat.types.condition_opcodes import ConditionOpcode
 
 
 def compute_coin_hints(cs: CoinSpend) -> List[bytes32]:

@@ -1,49 +1,37 @@
+from __future__ import annotations
+
 from io import TextIOWrapper
+from typing import Optional
+
 import click
 
 from wheat import __version__
+from wheat.cmds.beta import beta_cmd
+from wheat.cmds.completion import completion
 from wheat.cmds.configure import configure_cmd
+from wheat.cmds.data import data_cmd
+from wheat.cmds.db import db_cmd
+from wheat.cmds.dev import dev_cmd
 from wheat.cmds.farm import farm_cmd
 from wheat.cmds.init import init_cmd
 from wheat.cmds.keys import keys_cmd
 from wheat.cmds.netspace import netspace_cmd
 from wheat.cmds.passphrase import passphrase_cmd
+from wheat.cmds.peer import peer_cmd
+from wheat.cmds.plotnft import plotnft_cmd
 from wheat.cmds.plots import plots_cmd
+from wheat.cmds.plotters import plotters_cmd
 from wheat.cmds.rpc import rpc_cmd
 from wheat.cmds.show import show_cmd
 from wheat.cmds.start import start_cmd
 from wheat.cmds.stop import stop_cmd
 from wheat.cmds.wallet import wallet_cmd
-from wheat.cmds.plotnft import plotnft_cmd
-from wheat.cmds.plotters import plotters_cmd
-from wheat.cmds.db import db_cmd
 from wheat.util.default_root import DEFAULT_KEYS_ROOT_PATH, DEFAULT_ROOT_PATH
-from wheat.util.keychain import (
-    Keychain,
-    KeyringCurrentPassphraseIsInvalid,
-    set_keys_root_path,
-    supports_keyring_passphrase,
-)
+from wheat.util.errors import KeychainCurrentPassphraseIsInvalid
+from wheat.util.keychain import Keychain, set_keys_root_path
 from wheat.util.ssl_check import check_ssl
-from typing import Optional
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
-
-
-def monkey_patch_click() -> None:
-    # this hacks around what seems to be an incompatibility between the python from `pyinstaller`
-    # and `click`
-    #
-    # Not 100% sure on the details, but it seems that `click` performs a check on start-up
-    # that `codecs.lookup(locale.getpreferredencoding()).name != 'ascii'`, and refuses to start
-    # if it's not. The python that comes with `pyinstaller` fails this check.
-    #
-    # This will probably cause problems with the command-line tools that use parameters that
-    # are not strict ascii. The real fix is likely with the `pyinstaller` python.
-
-    import click.core
-
-    click.core._verify_python3_env = lambda *args, **kwargs: 0  # type: ignore[attr-defined]
 
 
 @click.group(
@@ -74,16 +62,17 @@ def cli(
         set_keys_root_path(Path(keys_root_path))
 
     if passphrase_file is not None:
-        from wheat.cmds.passphrase_funcs import cache_passphrase, read_passphrase_from_file
         from sys import exit
+
+        from wheat.cmds.passphrase_funcs import cache_passphrase, read_passphrase_from_file
 
         try:
             passphrase = read_passphrase_from_file(passphrase_file)
             if Keychain.master_passphrase_is_valid(passphrase):
                 cache_passphrase(passphrase)
             else:
-                raise KeyringCurrentPassphraseIsInvalid("Invalid passphrase")
-        except KeyringCurrentPassphraseIsInvalid:
+                raise KeychainCurrentPassphraseIsInvalid()
+        except KeychainCurrentPassphraseIsInvalid:
             if Path(passphrase_file.name).is_file():
                 print(f'Invalid passphrase found in "{passphrase_file.name}"')
             else:
@@ -95,19 +84,12 @@ def cli(
     check_ssl(Path(root_path))
 
 
-if not supports_keyring_passphrase():
-    from wheat.cmds.passphrase_funcs import remove_passphrase_options_from_cmd
-
-    # TODO: Remove once keyring passphrase management is rolled out to all platforms
-    remove_passphrase_options_from_cmd(cli)
-
-
-@cli.command("version", short_help="Show wheat version")
+@cli.command("version", help="Show wheat version")
 def version_cmd() -> None:
     print(__version__)
 
 
-@cli.command("run_daemon", short_help="Runs wheat daemon")
+@cli.command("run_daemon", help="Runs wheat daemon")
 @click.option(
     "--wait-for-unlock",
     help="If the keyring is passphrase-protected, the daemon will wait for an unlock command before accessing keys",
@@ -118,6 +100,7 @@ def version_cmd() -> None:
 @click.pass_context
 def run_daemon_cmd(ctx: click.Context, wait_for_unlock: bool) -> None:
     import asyncio
+
     from wheat.daemon.server import async_run_daemon
     from wheat.util.keychain import Keychain
 
@@ -140,13 +123,15 @@ cli.add_command(netspace_cmd)
 cli.add_command(farm_cmd)
 cli.add_command(plotters_cmd)
 cli.add_command(db_cmd)
-
-if supports_keyring_passphrase():
-    cli.add_command(passphrase_cmd)
+cli.add_command(peer_cmd)
+cli.add_command(data_cmd)
+cli.add_command(passphrase_cmd)
+cli.add_command(beta_cmd)
+cli.add_command(completion)
+cli.add_command(dev_cmd)
 
 
 def main() -> None:
-    monkey_patch_click()
     cli()  # pylint: disable=no-value-for-parameter
 
 

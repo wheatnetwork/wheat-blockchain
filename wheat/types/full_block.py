@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import List, Optional, Set
+
 from wheat.types.blockchain_format.coin import Coin
 from wheat.types.blockchain_format.foliage import Foliage, FoliageTransactionBlock, TransactionsInfo
-from wheat.types.blockchain_format.program import SerializedProgram
 from wheat.types.blockchain_format.reward_chain_block import RewardChainBlock
+from wheat.types.blockchain_format.serialized_program import SerializedProgram
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.blockchain_format.vdf import VDFProof
 from wheat.types.end_of_slot_bundle import EndOfSubSlotBundle
-from wheat.util.ints import uint32
+from wheat.util.ints import uint32, uint128
 from wheat.util.streamable import Streamable, streamable
 
 
@@ -39,11 +42,11 @@ class FullBlock(Streamable):
         return self.reward_chain_block.height
 
     @property
-    def weight(self):
+    def weight(self) -> uint128:
         return self.reward_chain_block.weight
 
     @property
-    def total_iters(self):
+    def total_iters(self) -> uint128:
         return self.reward_chain_block.total_iters
 
     @property

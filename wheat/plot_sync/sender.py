@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
@@ -21,7 +23,9 @@ from wheat.protocols.harvester_protocol import (
     PlotSyncResponse,
     PlotSyncStart,
 )
-from wheat.server.ws_connection import NodeType, ProtocolMessageTypes, WSWheatConnection, make_msg
+from wheat.protocols.protocol_message_types import ProtocolMessageTypes
+from wheat.server.outbound_message import NodeType, make_msg
+from wheat.server.ws_connection import WSWheatConnection
 from wheat.util.generator_tools import list_to_batches
 from wheat.util.ints import int16, uint32, uint64
 
@@ -49,6 +53,9 @@ def _convert_plot_info_list(plot_infos: List[PlotInfo]) -> List[Plot]:
 class PayloadType(Protocol):
     def __init__(self, identifier: PlotSyncIdentifier, *args: object) -> None:
         ...
+
+    def __bytes__(self) -> bytes:
+        pass
 
 
 T = TypeVar("T", bound=PayloadType)
@@ -89,7 +96,7 @@ class Sender:
     _messages: List[MessageGenerator[PayloadType]]
     _last_sync_id: uint64
     _stop_requested = False
-    _task: Optional[asyncio.Task]  # type: ignore[type-arg]  # Asks for Task parameter which doesn't work
+    _task: Optional[asyncio.Task[None]]
     _response: Optional[ExpectedResponse]
 
     def __init__(self, plot_manager: PlotManager) -> None:
@@ -111,8 +118,7 @@ class Sender:
             await self.await_closed()
         if self._task is None:
             self._task = asyncio.create_task(self._run())
-            # TODO, Add typing in PlotManager
-            if not self._plot_manager.initial_refresh() or self._sync_id != 0:  # type:ignore[no-untyped-call]
+            if not self._plot_manager.initial_refresh() or self._sync_id != 0:
                 self._reset()
         else:
             raise AlreadyStartedError()
@@ -143,8 +149,7 @@ class Sender:
         self._next_message_id = uint64(0)
         self._messages.clear()
         if self._task is not None:
-            # TODO, Add typing in PlotManager
-            self.sync_start(self._plot_manager.plot_count(), True)  # type:ignore[no-untyped-call]
+            self.sync_start(self._plot_manager.plot_count(), True)
             for remaining, batch in list_to_batches(
                 list(self._plot_manager.plots.values()), self._plot_manager.refresh_parameter.batch_size
             ):
@@ -167,7 +172,7 @@ class Sender:
             return False
         if response.identifier.sync_id != self._response.identifier.sync_id:
             log.warning(
-                "set_response unexpected sync-id: " f"{response.identifier.sync_id}/{self._response.identifier.sync_id}"
+                "set_response unexpected sync-id: {response.identifier.sync_id}/{self._response.identifier.sync_id}"
             )
             return False
         if response.identifier.message_id != self._response.identifier.message_id:
@@ -178,7 +183,7 @@ class Sender:
             return False
         if response.message_type != int16(self._response.message_type.value):
             log.warning(
-                "set_response unexpected message-type: " f"{response.message_type}/{self._response.message_type.value}"
+                "set_response unexpected message-type: {response.message_type}/{self._response.message_type.value}"
             )
             return False
         log.debug(f"set_response valid {response}")
@@ -284,8 +289,7 @@ class Sender:
         self._add_list_batched(ProtocolMessageTypes.plot_sync_invalid, PlotSyncPathList, failed_to_open_list)
         no_key_list = [str(x) for x in self._plot_manager.no_key_filenames]
         self._add_list_batched(ProtocolMessageTypes.plot_sync_keys_missing, PlotSyncPathList, no_key_list)
-        # TODO, Add typing in PlotManager
-        duplicates_list: List[str] = self._plot_manager.get_duplicates().copy()  # type:ignore[no-untyped-call]
+        duplicates_list = self._plot_manager.get_duplicates().copy()
         self._add_list_batched(ProtocolMessageTypes.plot_sync_duplicates, PlotSyncPathList, duplicates_list)
         self._add_message(ProtocolMessageTypes.plot_sync_done, PlotSyncDone, uint64(int(duration)))
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -6,19 +8,23 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from blspy import G1Element, PrivateKey
 from chiapos import DiskProver
+from typing_extensions import final
 
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.config import load_config, lock_and_load_config, save_config
+from wheat.util.ints import uint32
+from wheat.util.streamable import Streamable, streamable
 
 log = logging.getLogger(__name__)
 
 
-@dataclass
-class PlotsRefreshParameter:
-    interval_seconds: int = 120
-    retry_invalid_seconds: int = 1200
-    batch_size: int = 300
-    batch_sleep_milliseconds: int = 1
+@streamable
+@dataclass(frozen=True)
+class PlotsRefreshParameter(Streamable):
+    interval_seconds: uint32 = uint32(120)
+    retry_invalid_seconds: uint32 = uint32(1200)
+    batch_size: uint32 = uint32(300)
+    batch_sleep_milliseconds: uint32 = uint32(1)
 
 
 @dataclass
@@ -61,10 +67,27 @@ class PlotRefreshResult:
     duration: float = 0
 
 
+@final
+@dataclass
+class Params:
+    size: int
+    num: int
+    buffer: int
+    num_threads: int
+    buckets: int
+    tmp_dir: Path
+    tmp2_dir: Optional[Path]
+    final_dir: Path
+    plotid: Optional[str]
+    memo: Optional[str]
+    nobitfield: bool
+    stripe_size: int = 65536
+
+
 def get_plot_directories(root_path: Path, config: Dict = None) -> List[str]:
     if config is None:
         config = load_config(root_path, "config.yaml")
-    return config["harvester"]["plot_directories"]
+    return config["harvester"]["plot_directories"] or []
 
 
 def get_plot_filenames(root_path: Path) -> Dict[Path, List[Path]]:
@@ -73,16 +96,28 @@ def get_plot_filenames(root_path: Path) -> Dict[Path, List[Path]]:
     config = load_config(root_path, "config.yaml")
     recursive_scan: bool = config["harvester"].get("recursive_plot_scan", False)
     for directory_name in get_plot_directories(root_path, config):
-        directory = Path(directory_name).resolve()
+        try:
+            directory = Path(directory_name).resolve()
+        except (OSError, RuntimeError):
+            log.exception(f"Failed to resolve {directory_name}")
+            continue
         all_files[directory] = get_filenames(directory, recursive_scan)
     return all_files
 
 
 def add_plot_directory(root_path: Path, str_path: str) -> Dict:
+    path: Path = Path(str_path).resolve()
+    if not path.exists():
+        raise ValueError(f"Path doesn't exist: {path}")
+    if not path.is_dir():
+        raise ValueError(f"Path is not a directory: {path}")
     log.debug(f"add_plot_directory {str_path}")
     with lock_and_load_config(root_path, "config.yaml") as config:
-        if str(Path(str_path).resolve()) not in get_plot_directories(root_path, config):
-            config["harvester"]["plot_directories"].append(str(Path(str_path).resolve()))
+        if str(Path(str_path).resolve()) in get_plot_directories(root_path, config):
+            raise ValueError(f"Path already added: {path}")
+        if not config["harvester"]["plot_directories"]:
+            config["harvester"]["plot_directories"] = []
+        config["harvester"]["plot_directories"].append(str(Path(str_path).resolve()))
         save_config(root_path, "config.yaml", config)
     return config
 

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from typing import Any
 
 from wheat.plot_sync.util import ErrorCodes, State
 from wheat.protocols.harvester_protocol import PlotSyncIdentifier
-from wheat.server.ws_connection import NodeType
+from wheat.server.outbound_message import NodeType
 from wheat.util.ints import uint64
 
 

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
 
 import click
 
-from wheat.util.config import lock_and_load_config, save_config, str2bool
+from wheat.util.config import load_defaults_for_missing_services, lock_and_load_config, save_config, str2bool
 
 
 def configure(
@@ -22,8 +24,11 @@ def configure(
     crawler_minimum_version_count: Optional[int],
     seeder_domain_name: str,
     seeder_nameserver: str,
-):
-    with lock_and_load_config(root_path, "config.yaml") as config:
+) -> None:
+    config_yaml = "config.yaml"
+    with lock_and_load_config(root_path, config_yaml, fill_missing_services=True) as config:
+        config.update(load_defaults_for_missing_services(config=config, config_name=config_yaml))
+
         change_made = False
         if set_node_introducer:
             try:
@@ -96,11 +101,17 @@ def configure(
             if testnet == "true" or testnet == "t":
                 print("Setting Testnet")
                 testnet_port = "23333"
-                testnet_introducer = "introducer-testnet10.wheat.top"
-                testnet_dns_introducer = "dns-introducer-testnet0.wheat.top"
-                bootstrap_peers = ["testnet0-node.wheat.top"]
-                testnet = "testnet0"
+                testnet_introducer = "introducer-testnet10.wheatcoin.top"
+                testnet_dns_introducer = "dns-introducer-testnet10.wheatcoin.top"
+                bootstrap_peers = ["testnet10-node.wheatcoin.top"]
+                testnet = "testnet10"
                 config["full_node"]["port"] = int(testnet_port)
+                if config["full_node"]["introducer_peer"] is None:
+                    config["full_node"]["introducer_peer"] = {}
+                assert config["full_node"]["introducer_peer"] is not None  # mypy
+                if config["wallet"]["introducer_peer"] is None:
+                    config["wallet"]["introducer_peer"] = {}
+                assert config["wallet"]["introducer_peer"] is not None  # mypy
                 config["full_node"]["introducer_peer"]["port"] = int(testnet_port)
                 config["farmer"]["full_node_peer"]["port"] = int(testnet_port)
                 config["timelord"]["full_node_peer"]["port"] = int(testnet_port)
@@ -120,6 +131,7 @@ def configure(
                 config["ui"]["selected_network"] = testnet
                 config["introducer"]["selected_network"] = testnet
                 config["wallet"]["selected_network"] = testnet
+                config["data_layer"]["selected_network"] = testnet
 
                 if "seeder" in config:
                     config["seeder"]["port"] = int(testnet_port)
@@ -133,9 +145,9 @@ def configure(
             elif testnet == "false" or testnet == "f":
                 print("Setting Mainnet")
                 mainnet_port = "21333"
-                mainnet_introducer = "introducer.wheat.top"
-                mainnet_dns_introducer = "dns-introducer.wheat.top"
-                bootstrap_peers = ["node.wheat.top"]
+                mainnet_introducer = "introducer.wheatcoin.top"
+                mainnet_dns_introducer = "dns-introducer.wheatcoin.top"
+                bootstrap_peers = ["node.wheatcoin.top"]
                 net = "mainnet"
                 config["full_node"]["port"] = int(mainnet_port)
                 config["full_node"]["introducer_peer"]["port"] = int(mainnet_port)
@@ -157,6 +169,7 @@ def configure(
                 config["ui"]["selected_network"] = net
                 config["introducer"]["selected_network"] = net
                 config["wallet"]["selected_network"] = net
+                config["data_layer"]["selected_network"] = net
 
                 if "seeder" in config:
                     config["seeder"]["port"] = int(mainnet_port)
@@ -194,7 +207,7 @@ def configure(
             save_config(root_path, "config.yaml", config)
 
 
-@click.command("configure", short_help="Modify configuration")
+@click.command("configure", help="Modify configuration", no_args_is_help=True)
 @click.option(
     "--testnet",
     "-t",
@@ -256,22 +269,22 @@ def configure(
 )
 @click.pass_context
 def configure_cmd(
-    ctx,
-    set_farmer_peer,
-    set_node_introducer,
-    set_fullnode_port,
-    set_harvester_port,
-    set_log_level,
-    enable_upnp,
-    set_outbound_peer_count,
-    set_peer_count,
-    testnet,
-    set_peer_connect_timeout,
-    crawler_db_path,
-    crawler_minimum_version_count,
-    seeder_domain_name,
-    seeder_nameserver,
-):
+    ctx: click.Context,
+    set_farmer_peer: str,
+    set_node_introducer: str,
+    set_fullnode_port: str,
+    set_harvester_port: str,
+    set_log_level: str,
+    enable_upnp: str,
+    set_outbound_peer_count: str,
+    set_peer_count: str,
+    testnet: str,
+    set_peer_connect_timeout: str,
+    crawler_db_path: str,
+    crawler_minimum_version_count: int,
+    seeder_domain_name: str,
+    seeder_nameserver: str,
+) -> None:
     configure(
         ctx.obj["root_path"],
         set_farmer_peer,

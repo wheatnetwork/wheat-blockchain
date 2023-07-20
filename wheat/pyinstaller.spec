@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import importlib
+import os
 import pathlib
 import platform
 import sysconfig
@@ -19,7 +20,7 @@ def solve_name_collision_problem(analysis):
     There is a collision between the `wheat` file name (which is the executable)
     and the `wheat` directory, which contains non-code resources like `english.txt`.
     We move all the resources in the zipped area so there is no
-    need to create the `chia` directory, since the names collide.
+    need to create the `wheat` directory, since the names collide.
 
     Fetching data now requires going into a zip file, so it will be slower.
     It's best if files that are used frequently are cached.
@@ -55,6 +56,7 @@ version_data = copy_metadata(get_distribution("wheat-blockchain"))[0]
 block_cipher = None
 
 SERVERS = [
+    "data_layer",
     "wallet",
     "full_node",
     "harvester",
@@ -63,39 +65,42 @@ SERVERS = [
     "timelord",
 ]
 
-# TODO: collapse all these entry points into one `wheat_exec` entrypoint that accepts the server as a parameter
+if THIS_IS_WINDOWS:
+    hidden_imports_for_windows = ["win32timezone", "win32cred", "pywintypes", "win32ctypes.pywin32"]
+else:
+    hidden_imports_for_windows = []
 
-entry_points = ["wheat.cmds.wheat"] + [f"wheat.server.start_{s}" for s in SERVERS]
-
-hiddenimports = []
-hiddenimports.extend(entry_points)
-hiddenimports.extend(keyring_imports)
-
-binaries = [
-    (
-        f"{ROOT}/madmax/wheat_plot",
-        "madmax"
-    ),
-    (
-        f"{ROOT}/madmax/wheat_plot_k34",
-        "madmax"
-    )
+hiddenimports = [
+    *collect_submodules("wheat"),
+    *keyring_imports,
+    *hidden_imports_for_windows,
 ]
 
-if not THIS_IS_MAC:
+binaries = []
+
+if os.path.exists(f"{ROOT}/madmax/chia_plot"):
+    binaries.extend([
+        (
+            f"{ROOT}/madmax/chia_plot",
+            "madmax"
+        )
+    ])
+
+if os.path.exists(f"{ROOT}/madmax/chia_plot_k34",):
+    binaries.extend([
+        (
+            f"{ROOT}/madmax/chia_plot_k34",
+            "madmax"
+        )
+    ])
+
+if os.path.exists(f"{ROOT}/bladebit/bladebit"):
     binaries.extend([
         (
             f"{ROOT}/bladebit/bladebit",
             "bladebit"
         )
     ])
-
-if THIS_IS_WINDOWS:
-    hiddenimports.extend(["win32timezone", "win32cred", "pywintypes", "win32ctypes.pywin32"])
-
-# this probably isn't necessary
-if THIS_IS_WINDOWS:
-    entry_points.extend(["aiohttp", "wheat.util.bip39"])
 
 if THIS_IS_WINDOWS:
     wheat_mod = importlib.import_module("wheat")
@@ -115,11 +120,11 @@ if THIS_IS_WINDOWS:
             ".",
         ),
         (
-            f"{ROOT}\\madmax\\wheat_plot.exe",
+            f"{ROOT}\\madmax\\chia_plot.exe",
             "madmax"
         ),
         (
-            f"{ROOT}\\madmax\\wheat_plot_k34.exe",
+            f"{ROOT}\\madmax\\chia_plot_k34.exe",
             "madmax"
         ),
         (
@@ -133,7 +138,8 @@ datas = []
 
 datas.append((f"{ROOT}/wheat/util/english.txt", "wheat/util"))
 datas.append((f"{ROOT}/wheat/util/initial-config.yaml", "wheat/util"))
-datas.append((f"{ROOT}/wheat/wallet/puzzles/*.hex", "wheat/wallet/puzzles"))
+for path in sorted({path.parent for path in ROOT.joinpath("wheat").rglob("*.hex")}):
+    datas.append((f"{path}/*.hex", path.relative_to(ROOT)))
 datas.append((f"{ROOT}/wheat/ssl/*", "wheat/ssl"))
 datas.append((f"{ROOT}/mozilla-ca/*", "mozilla-ca"))
 datas.append(version_data)
@@ -192,6 +198,9 @@ for server in SERVERS:
 
 add_binary("start_crawler", f"{ROOT}/wheat/seeder/start_crawler.py", COLLECT_ARGS)
 add_binary("start_seeder", f"{ROOT}/wheat/seeder/dns_server.py", COLLECT_ARGS)
+add_binary("start_data_layer_http", f"{ROOT}/wheat/data_layer/data_layer_server.py", COLLECT_ARGS)
+add_binary("start_data_layer_s3_plugin", f"{ROOT}/wheat/data_layer/s3_plugin_service.py", COLLECT_ARGS)
+add_binary("timelord_launcher", f"{ROOT}/wheat/timelord/timelord_launcher.py", COLLECT_ARGS)
 
 COLLECT_KWARGS = dict(
     strip=False,

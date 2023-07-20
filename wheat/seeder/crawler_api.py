@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from typing import Optional
 
-import wheat.server.ws_connection as ws
-from wheat.full_node.full_node import full_node_protocol, wallet_protocol
+from wheat.protocols import full_node_protocol, wallet_protocol
 from wheat.seeder.crawler import Crawler
 from wheat.server.outbound_message import Message
-from wheat.util.api_decorators import api_request, peer_required
+from wheat.server.server import WheatServer
+from wheat.server.ws_connection import WSWheatConnection
+from wheat.util.api_decorators import api_request
 
 
 class CrawlerAPI:
@@ -20,106 +23,101 @@ class CrawlerAPI:
         return invoke
 
     @property
-    def server(self):
+    def server(self) -> WheatServer:
+        assert self.crawler.server is not None
         return self.crawler.server
 
     @property
     def log(self):
         return self.crawler.log
 
-    @peer_required
-    @api_request
-    async def request_peers(self, _request: full_node_protocol.RequestPeers, peer: ws.WSWheatConnection):
+    @api_request(peer_required=True)
+    async def request_peers(self, _request: full_node_protocol.RequestPeers, peer: WSWheatConnection):
         pass
 
-    @peer_required
-    @api_request
+    @api_request(peer_required=True)
     async def respond_peers(
-        self, request: full_node_protocol.RespondPeers, peer: ws.WSWheatConnection
+        self, request: full_node_protocol.RespondPeers, peer: WSWheatConnection
     ) -> Optional[Message]:
         pass
 
-    @peer_required
-    @api_request
-    async def new_peak(self, request: full_node_protocol.NewPeak, peer: ws.WSWheatConnection) -> Optional[Message]:
+    @api_request(peer_required=True)
+    async def new_peak(self, request: full_node_protocol.NewPeak, peer: WSWheatConnection) -> Optional[Message]:
         await self.crawler.new_peak(request, peer)
         return None
 
-    @api_request
+    @api_request()
     async def new_transaction(self, transaction: full_node_protocol.NewTransaction) -> Optional[Message]:
         pass
 
-    @api_request
-    @peer_required
+    @api_request(peer_required=True)
     async def new_signage_point_or_end_of_sub_slot(
-        self, new_sp: full_node_protocol.NewSignagePointOrEndOfSubSlot, peer: ws.WSWheatConnection
+        self, new_sp: full_node_protocol.NewSignagePointOrEndOfSubSlot, peer: WSWheatConnection
     ) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def new_unfinished_block(
         self, new_unfinished_block: full_node_protocol.NewUnfinishedBlock
     ) -> Optional[Message]:
         pass
 
-    @peer_required
-    @api_request
-    async def new_compact_vdf(self, request: full_node_protocol.NewCompactVDF, peer: ws.WSWheatConnection):
+    @api_request(peer_required=True)
+    async def new_compact_vdf(self, request: full_node_protocol.NewCompactVDF, peer: WSWheatConnection):
         pass
 
-    @api_request
+    @api_request()
     async def request_transaction(self, request: full_node_protocol.RequestTransaction) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_proof_of_weight(self, request: full_node_protocol.RequestProofOfWeight) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_block(self, request: full_node_protocol.RequestBlock) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_blocks(self, request: full_node_protocol.RequestBlocks) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_unfinished_block(
         self, request_unfinished_block: full_node_protocol.RequestUnfinishedBlock
     ) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_signage_point_or_end_of_sub_slot(
         self, request: full_node_protocol.RequestSignagePointOrEndOfSubSlot
     ) -> Optional[Message]:
         pass
 
-    @peer_required
-    @api_request
+    @api_request(peer_required=True)
     async def request_mempool_transactions(
         self,
         request: full_node_protocol.RequestMempoolTransactions,
-        peer: ws.WSWheatConnection,
+        peer: WSWheatConnection,
     ) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_block_header(self, request: wallet_protocol.RequestBlockHeader) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_additions(self, request: wallet_protocol.RequestAdditions) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_removals(self, request: wallet_protocol.RequestRemovals) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_puzzle_solution(self, request: wallet_protocol.RequestPuzzleSolution) -> Optional[Message]:
         pass
 
-    @api_request
+    @api_request()
     async def request_header_blocks(self, request: wallet_protocol.RequestHeaderBlocks) -> Optional[Message]:
         pass

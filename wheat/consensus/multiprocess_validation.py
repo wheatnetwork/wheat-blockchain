@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import traceback
 from concurrent.futures import Executor
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 from blspy import AugSchemeMPL, G1Element
 
@@ -19,6 +21,7 @@ from wheat.consensus.pot_iterations import calculate_iterations_quality, is_over
 from wheat.full_node.mempool_check_conditions import get_name_puzzle_conditions
 from wheat.types.block_protocol import BlockInfo
 from wheat.types.blockchain_format.coin import Coin
+from wheat.types.blockchain_format.proof_of_space import verify_and_get_quality_string
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.blockchain_format.sub_epoch_summary import SubEpochSummary
 from wheat.types.full_block import FullBlock
@@ -30,7 +33,7 @@ from wheat.util.condition_tools import pkm_pairs
 from wheat.util.errors import Err, ValidationError
 from wheat.util.generator_tools import get_block_header, tx_removals_and_additions
 from wheat.util.ints import uint16, uint32, uint64
-from wheat.util.streamable import Streamable, dataclass_from_dict, streamable
+from wheat.util.streamable import Streamable, streamable
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ class PreValidationResult(Streamable):
 
 
 def batch_pre_validate_blocks(
-    constants_dict: Dict[str, Any],
+    constants: ConsensusConstants,
     blocks_pickled: Dict[bytes, bytes],
     full_blocks_pickled: Optional[List[bytes]],
     header_blocks_pickled: Optional[List[bytes]],
@@ -60,7 +63,6 @@ def batch_pre_validate_blocks(
     for k, v in blocks_pickled.items():
         blocks[bytes32(k)] = BlockRecord.from_bytes(v)
     results: List[PreValidationResult] = []
-    constants: ConsensusConstants = dataclass_from_dict(ConsensusConstants, constants_dict)
     if full_blocks_pickled is not None and header_blocks_pickled is not None:
         assert ValueError("Only one should be passed here")
 
@@ -89,9 +91,9 @@ def batch_pre_validate_blocks(
                     npc_result = get_name_puzzle_conditions(
                         block_generator,
                         min(constants.MAX_BLOCK_COST_CLVM, block.transactions_info.cost),
-                        cost_per_byte=constants.COST_PER_BYTE,
                         mempool_mode=False,
                         height=block.height,
+                        constants=constants,
                     )
                     removals, tx_additions = tx_removals_and_additions(npc_result.conds)
                 if npc_result is not None and npc_result.error is not None:
@@ -114,10 +116,9 @@ def batch_pre_validate_blocks(
                 successfully_validated_signatures = False
                 # If we failed CLVM, no need to validate signature, the block is already invalid
                 if error_int is None:
-
                     # If this is False, it means either we don't have a signature (not a tx block) or we have an invalid
                     # signature (which also puts in an error) or we didn't validate the signature because we want to
-                    # validate it later. receive_block will attempt to validate the signature later.
+                    # validate it later. add_block will attempt to validate the signature later.
                     if validate_signatures:
                         if npc_result is not None and block.transactions_info is not None:
                             assert npc_result.conds
@@ -164,7 +165,6 @@ def batch_pre_validate_blocks(
 
 async def pre_validate_blocks_multiprocessing(
     constants: ConsensusConstants,
-    constants_json: Dict[str, Any],
     block_records: BlockchainInterface,
     blocks: Sequence[FullBlock],
     pool: Executor,
@@ -183,7 +183,7 @@ async def pre_validate_blocks_multiprocessing(
 
     Args:
         check_filter:
-        constants_json:
+        constants:
         pool:
         constants:
         block_records:
@@ -194,7 +194,6 @@ async def pre_validate_blocks_multiprocessing(
     prev_b: Optional[BlockRecord] = None
     # Collects all the recent blocks (up to the previous sub-epoch)
     recent_blocks: Dict[bytes32, BlockRecord] = {}
-    recent_blocks_compressed: Dict[bytes32, BlockRecord] = {}
     num_sub_slots_found = 0
     num_blocks_seen = 0
     if blocks[0].height > 0:
@@ -207,9 +206,6 @@ async def pre_validate_blocks_multiprocessing(
             or num_blocks_seen < constants.NUMBER_OF_TIMESTAMPS
             or num_sub_slots_found < num_sub_slots_to_look_for
         ) and curr.height > 0:
-            if num_blocks_seen < constants.NUMBER_OF_TIMESTAMPS or num_sub_slots_found < num_sub_slots_to_look_for:
-                recent_blocks_compressed[curr.header_hash] = curr
-
             if curr.first_in_sub_slot:
                 assert curr.finished_challenge_slot_hashes is not None
                 num_sub_slots_found += len(curr.finished_challenge_slot_hashes)
@@ -218,7 +214,6 @@ async def pre_validate_blocks_multiprocessing(
                 num_blocks_seen += 1
             curr = block_records.block_record(curr.prev_hash)
         recent_blocks[curr.header_hash] = curr
-        recent_blocks_compressed[curr.header_hash] = curr
     block_record_was_present = []
     for block in blocks:
         block_record_was_present.append(block_records.contains_block(block.header_hash))
@@ -240,8 +235,8 @@ async def pre_validate_blocks_multiprocessing(
             cc_sp_hash: bytes32 = challenge
         else:
             cc_sp_hash = block.reward_chain_block.challenge_chain_sp_vdf.output.get_hash()
-        q_str: Optional[bytes32] = block.reward_chain_block.proof_of_space.verify_and_get_quality_string(
-            constants, challenge, cc_sp_hash
+        q_str: Optional[bytes32] = verify_and_get_quality_string(
+            block.reward_chain_block.proof_of_space, constants, challenge, cc_sp_hash
         )
         if q_str is None:
             for i, block_i in enumerate(blocks):
@@ -278,10 +273,8 @@ async def pre_validate_blocks_multiprocessing(
         if not block_records.contains_block(block_rec.header_hash):
             block_records.add_block_record(block_rec)  # Temporarily add block to dict
             recent_blocks[block_rec.header_hash] = block_rec
-            recent_blocks_compressed[block_rec.header_hash] = block_rec
         else:
             recent_blocks[block_rec.header_hash] = block_records.block_record(block_rec.header_hash)
-            recent_blocks_compressed[block_rec.header_hash] = block_records.block_record(block_rec.header_hash)
         prev_b = block_rec
         diff_ssis.append((difficulty, sub_slot_iters))
 
@@ -291,19 +284,15 @@ async def pre_validate_blocks_multiprocessing(
         if not block_record_was_present[i]:
             block_records.remove_block_record(block.header_hash)
 
-    recent_sb_compressed_pickled = {bytes(k): bytes(v) for k, v in recent_blocks_compressed.items()}
     npc_results_pickled = {}
     for k, v in npc_results.items():
         npc_results_pickled[k] = bytes(v)
     futures = []
     # Pool of workers to validate blocks concurrently
+    recent_blocks_bytes = {bytes(k): bytes(v) for k, v in recent_blocks.items()}  # convert to bytes
     for i in range(0, len(blocks), batch_size):
         end_i = min(i + batch_size, len(blocks))
         blocks_to_validate = blocks[i:end_i]
-        if any([len(block.finished_sub_slots) > 0 for block in blocks_to_validate]):
-            final_pickled = {bytes(k): bytes(v) for k, v in recent_blocks.items()}
-        else:
-            final_pickled = recent_sb_compressed_pickled
         b_pickled: Optional[List[bytes]] = None
         hb_pickled: Optional[List[bytes]] = None
         previous_generators: List[Optional[bytes]] = []
@@ -344,8 +333,8 @@ async def pre_validate_blocks_multiprocessing(
             asyncio.get_running_loop().run_in_executor(
                 pool,
                 batch_pre_validate_blocks,
-                constants_json,
-                final_pickled,
+                constants,
+                recent_blocks_bytes,
                 b_pickled,
                 hb_pickled,
                 previous_generators,
@@ -365,7 +354,7 @@ async def pre_validate_blocks_multiprocessing(
 
 
 def _run_generator(
-    constants_dict: bytes,
+    constants: ConsensusConstants,
     unfinished_block_bytes: bytes,
     block_generator_bytes: bytes,
     height: uint32,
@@ -375,7 +364,6 @@ def _run_generator(
     validate the heavy parts of a block (clvm program) in a different process.
     """
     try:
-        constants: ConsensusConstants = dataclass_from_dict(ConsensusConstants, constants_dict)
         unfinished_block: UnfinishedBlock = UnfinishedBlock.from_bytes(unfinished_block_bytes)
         assert unfinished_block.transactions_info is not None
         block_generator: BlockGenerator = BlockGenerator.from_bytes(block_generator_bytes)
@@ -383,7 +371,6 @@ def _run_generator(
         npc_result: NPCResult = get_name_puzzle_conditions(
             block_generator,
             min(constants.MAX_BLOCK_COST_CLVM, unfinished_block.transactions_info.cost),
-            cost_per_byte=constants.COST_PER_BYTE,
             mempool_mode=False,
             height=height,
         )

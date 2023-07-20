@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from typing import List, Optional
 
 from typing_extensions import Protocol
 
-from wheat.types.blockchain_format.program import SerializedProgram
+from wheat.types.blockchain_format.serialized_program import SerializedProgram
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.ints import uint32
 

@@ -1,29 +1,30 @@
+from __future__ import annotations
+
 import logging
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
+
 from blspy import G1Element
 from clvm.casts import int_from_bytes, int_to_bytes
 
 from wheat.clvm.singleton import SINGLETON_LAUNCHER
 from wheat.consensus.block_rewards import calculate_pool_reward
 from wheat.consensus.coinbase import pool_parent_id
-from wheat.pools.pool_wallet_info import PoolState, LEAVING_POOL, SELF_POOLING
-
+from wheat.pools.pool_wallet_info import LEAVING_POOL, SELF_POOLING, PoolState
 from wheat.types.blockchain_format.coin import Coin
-from wheat.types.blockchain_format.program import Program, SerializedProgram
-
+from wheat.types.blockchain_format.program import Program
+from wheat.types.blockchain_format.serialized_program import SerializedProgram
 from wheat.types.blockchain_format.sized_bytes import bytes32
-from wheat.types.coin_spend import CoinSpend
-from wheat.wallet.puzzles.load_clvm import load_clvm
-from wheat.wallet.puzzles.singleton_top_layer import puzzle_for_singleton
-
+from wheat.types.coin_spend import CoinSpend, compute_additions
 from wheat.util.ints import uint32, uint64
+from wheat.wallet.puzzles.load_clvm import load_clvm_maybe_recompile
+from wheat.wallet.puzzles.singleton_top_layer import puzzle_for_singleton
 
 log = logging.getLogger(__name__)
 # "Full" is the outer singleton, with the inner puzzle filled in
-SINGLETON_MOD = load_clvm("singleton_top_layer.clvm")
-POOL_WAITING_ROOM_MOD = load_clvm("pool_waitingroom_innerpuz.clvm")
-POOL_MEMBER_MOD = load_clvm("pool_member_innerpuz.clvm")
-P2_SINGLETON_MOD = load_clvm("p2_singleton_or_delayed_puzhash.clvm")
+SINGLETON_MOD = load_clvm_maybe_recompile("singleton_top_layer.clsp")
+POOL_WAITING_ROOM_MOD = load_clvm_maybe_recompile("pool_waitingroom_innerpuz.clsp")
+POOL_MEMBER_MOD = load_clvm_maybe_recompile("pool_member_innerpuz.clsp")
+P2_SINGLETON_MOD = load_clvm_maybe_recompile("p2_singleton_or_delayed_puzhash.clsp")
 POOL_OUTER_MOD = SINGLETON_MOD
 
 POOL_MEMBER_HASH = POOL_MEMBER_MOD.get_tree_hash()
@@ -282,7 +283,7 @@ def create_absorb_spend(
 
 
 def get_most_recent_singleton_coin_from_coin_spend(coin_sol: CoinSpend) -> Optional[Coin]:
-    additions: List[Coin] = coin_sol.additions()
+    additions: List[Coin] = compute_additions(coin_sol)
     for coin in additions:
         if coin.amount % 2 == 1:
             return coin
@@ -388,7 +389,7 @@ def solution_to_pool_state(full_spend: CoinSpend) -> Optional[PoolState]:
         if inner_solution.rest().first().as_int() != 0:
             return None
 
-        # This is referred to as p1 in the wheatlisp code
+        # This is referred to as p1 in the chialisp code
         # spend_type is absorbing money if p1 is a cons box, spend_type is escape if p1 is an atom
         # TODO: The comment above, and in the CLVM, seems wrong
         extra_data = inner_solution.first()

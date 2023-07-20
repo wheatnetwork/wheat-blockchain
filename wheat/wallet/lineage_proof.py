@@ -1,8 +1,10 @@
-from dataclasses import dataclass
-from typing import Optional, Any, List
+from __future__ import annotations
 
-from wheat.types.blockchain_format.sized_bytes import bytes32
+from dataclasses import dataclass
+from typing import Any, List, Optional
+
 from wheat.types.blockchain_format.program import Program
+from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.ints import uint64
 from wheat.util.streamable import Streamable, streamable
 

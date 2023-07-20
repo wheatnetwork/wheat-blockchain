@@ -1,21 +1,35 @@
-from typing import KeysView, Generator
+from __future__ import annotations
+
+from typing import Generator, KeysView
 
 SERVICES_FOR_GROUP = {
-    "all": "wheat_harvester wheat_timelord_launcher wheat_timelord wheat_farmer wheat_full_node wheat_wallet".split(),
-    "node": "wheat_full_node".split(),
-    "harvester": "wheat_harvester".split(),
-    "farmer": "wheat_harvester wheat_farmer wheat_full_node wheat_wallet".split(),
-    "farmer-no-wallet": "wheat_harvester wheat_farmer wheat_full_node".split(),
-    "farmer-only": "wheat_farmer".split(),
-    "timelord": "wheat_timelord_launcher wheat_timelord wheat_full_node".split(),
-    "timelord-only": "wheat_timelord".split(),
-    "timelord-launcher-only": "wheat_timelord_launcher".split(),
-    "wallet": "wheat_wallet".split(),
-    "introducer": "wheat_introducer".split(),
-    "simulator": "wheat_full_node_simulator".split(),
-    "crawler": "wheat_crawler".split(),
-    "seeder": "wheat_crawler wheat_seeder".split(),
-    "seeder-only": "wheat_seeder".split(),
+    "all": [
+        "wheat_harvester",
+        "wheat_timelord_launcher",
+        "wheat_timelord",
+        "wheat_farmer",
+        "wheat_full_node",
+        "wheat_wallet",
+        "wheat_data_layer",
+        "wheat_data_layer_http",
+    ],
+    # TODO: should this be `data_layer`?
+    "data": ["wheat_wallet", "wheat_data_layer"],
+    "data_layer_http": ["wheat_data_layer_http"],
+    "node": ["wheat_full_node"],
+    "harvester": ["wheat_harvester"],
+    "farmer": ["wheat_harvester", "wheat_farmer", "wheat_full_node", "wheat_wallet"],
+    "farmer-no-wallet": ["wheat_harvester", "wheat_farmer", "wheat_full_node"],
+    "farmer-only": ["wheat_farmer"],
+    "timelord": ["wheat_timelord_launcher", "wheat_timelord", "wheat_full_node"],
+    "timelord-only": ["wheat_timelord"],
+    "timelord-launcher-only": ["wheat_timelord_launcher"],
+    "wallet": ["wheat_wallet"],
+    "introducer": ["wheat_introducer"],
+    "simulator": ["wheat_full_node_simulator"],
+    "crawler": ["wheat_crawler"],
+    "seeder": ["wheat_crawler", "wheat_seeder"],
+    "seeder-only": ["wheat_seeder"],
 }
 
 

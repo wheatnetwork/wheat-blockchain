@@ -1,14 +1,14 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from wheat.types.blockchain_format.coin import Coin
+from wheat.types.blockchain_format.program import Program
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.ints import uint64
-from wheat.util.streamable import streamable, Streamable
+from wheat.util.streamable import Streamable, streamable
 from wheat.wallet.lineage_proof import LineageProof
-from wheat.types.blockchain_format.program import Program
-from wheat.types.blockchain_format.coin import Coin
-
-DID_HRP = "did:wheat:"
 
 
 @streamable

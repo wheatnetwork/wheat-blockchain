@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 if __name__ == "__main__":
-    from tests.block_tools import create_block_tools, test_constants
-    from tests.util.keyring import TempKeyring
+    from wheat.simulator.block_tools import create_block_tools, test_constants
+    from wheat.simulator.keyring import TempKeyring
     from wheat.util.default_root import DEFAULT_ROOT_PATH
 
     with TempKeyring() as keychain:

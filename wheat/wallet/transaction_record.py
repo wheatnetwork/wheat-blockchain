@@ -1,15 +1,28 @@
-from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict
+from __future__ import annotations
 
-from wheat.consensus.coinbase import pool_parent_id, farmer_parent_id
+from dataclasses import dataclass
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar
+
+from wheat.consensus.coinbase import farmer_parent_id, pool_parent_id
 from wheat.types.blockchain_format.coin import Coin
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.mempool_inclusion_status import MempoolInclusionStatus
 from wheat.types.spend_bundle import SpendBundle
-from wheat.util.bech32m import encode_puzzle_hash, decode_puzzle_hash
+from wheat.util.bech32m import decode_puzzle_hash, encode_puzzle_hash
+from wheat.util.errors import Err
 from wheat.util.ints import uint8, uint32, uint64
 from wheat.util.streamable import Streamable, streamable
 from wheat.wallet.util.transaction_type import TransactionType
+
+T = TypeVar("T")
+
+minimum_send_attempts = 6
+
+
+@dataclass
+class ItemAndTransactionRecords(Generic[T]):
+    item: T
+    transaction_records: List["TransactionRecord"]
 
 
 @streamable
@@ -36,12 +49,14 @@ class TransactionRecord(Streamable):
     sent_to: List[Tuple[str, uint8, Optional[str]]]
     trade_id: Optional[bytes32]
     type: uint32  # TransactionType
+
+    # name is also called bundle_id and tx_id
     name: bytes32
     memos: List[Tuple[bytes32, List[bytes]]]
 
     def is_in_mempool(self) -> bool:
         # If one of the nodes we sent it to responded with success, we set it to success
-        for (_, mis, _) in self.sent_to:
+        for _, mis, _ in self.sent_to:
             if MempoolInclusionStatus(mis) == MempoolInclusionStatus.SUCCESS:
                 return True
         # Note, transactions pending inclusion (pending) return false
@@ -97,3 +112,15 @@ class TransactionRecord(Streamable):
             if memo is not None
         }
         return formatted
+
+    def is_valid(self) -> bool:
+        if len(self.sent_to) < minimum_send_attempts:
+            # we haven't tried enough peers yet
+            return True
+        if any(x[1] == MempoolInclusionStatus.SUCCESS for x in self.sent_to):
+            # we managed to push it to mempool at least once
+            return True
+        if any(x[2] in (Err.INVALID_FEE_LOW_FEE.name, Err.INVALID_FEE_TOO_CLOSE_TO_ZERO.name) for x in self.sent_to):
+            # we tried to push it to mempool and got a fee error so it's a temporary error
+            return True
+        return False

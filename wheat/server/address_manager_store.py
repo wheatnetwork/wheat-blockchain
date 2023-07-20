@@ -1,6 +1,13 @@
-import aiofiles
+from __future__ import annotations
+
 import asyncio
 import logging
+from dataclasses import dataclass
+from pathlib import Path
+from timeit import default_timer as timer
+from typing import Any, Dict, List, Optional, Tuple
+
+import aiofiles
 
 from wheat.server.address_manager import (
     BUCKET_SIZE,
@@ -11,12 +18,7 @@ from wheat.server.address_manager import (
 )
 from wheat.util.files import write_file_async
 from wheat.util.ints import uint64
-from wheat.util.path import mkdir
-from wheat.util.streamable import streamable, Streamable
-from dataclasses import dataclass
-from pathlib import Path
-from timeit import default_timer as timer
-from typing import Any, Dict, List, Optional, Tuple
+from wheat.util.streamable import Streamable, streamable
 
 log = logging.getLogger(__name__)
 
@@ -134,7 +136,7 @@ class AddressManagerStore:
 
         try:
             # Ensure the parent directory exists
-            mkdir(peers_file_path.parent)
+            peers_file_path.parent.mkdir(parents=True, exist_ok=True)
             start_time = timer()
             await cls._write_peers(peers_file_path, metadata, nodes, new_table_entries)
             log.debug(f"Serializing peer data took {timer() - start_time} seconds")

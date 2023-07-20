@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from wheat.consensus.constants import ConsensusConstants
 from wheat.consensus.pos_quality import _expected_plot_size
 from wheat.types.blockchain_format.sized_bytes import bytes32

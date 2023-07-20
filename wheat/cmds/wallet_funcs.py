@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import asyncio
+import json
+import os
 import pathlib
 import sys
 import time
@@ -6,27 +10,30 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
-import aiohttp
-
-from wheat.cmds.cmds_util import transaction_submitted_msg, transaction_status_msg
-from wheat.cmds.show import print_connections
+from wheat.cmds.cmds_util import transaction_status_msg, transaction_submitted_msg
+from wheat.cmds.peer_funcs import print_connections
 from wheat.cmds.units import units
 from wheat.rpc.wallet_rpc_client import WalletRpcClient
-from wheat.server.outbound_message import NodeType
 from wheat.server.start_wallet import SERVICE_NAME
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.bech32m import bech32_decode, decode_puzzle_hash, encode_puzzle_hash
-from wheat.util.config import load_config
+from wheat.util.config import load_config, selected_network_address_prefix
 from wheat.util.default_root import DEFAULT_ROOT_PATH
-from wheat.util.ints import uint16, uint32, uint64, uint128
-from wheat.wallet.did_wallet.did_info import DID_HRP
-from wheat.wallet.nft_wallet.nft_info import NFT_HRP, NFTInfo
+from wheat.util.ints import uint16, uint32, uint64
+from wheat.wallet.nft_wallet.nft_info import NFTInfo
+from wheat.wallet.outer_puzzles import AssetType
+from wheat.wallet.puzzle_drivers import PuzzleInfo
 from wheat.wallet.trade_record import TradeRecord
 from wheat.wallet.trading.offer import Offer
 from wheat.wallet.trading.trade_status import TradeStatus
 from wheat.wallet.transaction_record import TransactionRecord
-from wheat.wallet.util.transaction_type import TransactionType
+from wheat.wallet.util.address_type import AddressType, ensure_valid_address
+from wheat.wallet.util.puzzle_decorator_type import PuzzleDecoratorType
+from wheat.wallet.util.query_filter import HashFilter, TransactionTypeFilter
+from wheat.wallet.util.transaction_type import CLAWBACK_TRANSACTION_TYPES, TransactionType
 from wheat.wallet.util.wallet_types import WalletType
+from wheat.wallet.vc_wallet.vc_store import VCProofs
+from wheat.wallet.wallet_coin_store import GetCoinRecords
 
 CATNameResolver = Callable[[bytes32], Awaitable[Optional[Tuple[Optional[uint32], str]]]]
 
@@ -37,6 +44,9 @@ transaction_type_descriptions = {
     TransactionType.FEE_REWARD: "rewarded",
     TransactionType.INCOMING_TRADE: "received in trade",
     TransactionType.OUTGOING_TRADE: "sent in trade",
+    TransactionType.INCOMING_CLAWBACK_RECEIVE: "received in clawback as recipient",
+    TransactionType.INCOMING_CLAWBACK_SEND: "received in clawback as sender",
+    TransactionType.OUTGOING_CLAWBACK: "claim/clawback",
 }
 
 
@@ -44,7 +54,14 @@ def transaction_description_from_type(tx: TransactionRecord) -> str:
     return transaction_type_descriptions.get(TransactionType(tx.type), "(unknown reason)")
 
 
-def print_transaction(tx: TransactionRecord, verbose: bool, name, address_prefix: str, mojo_per_unit: int) -> None:
+def print_transaction(
+    tx: TransactionRecord,
+    verbose: bool,
+    name,
+    address_prefix: str,
+    mojo_per_unit: int,
+    coin_record: Optional[Dict[str, Any]] = None,
+) -> None:  # pragma: no cover
     if verbose:
         print(tx)
     else:
@@ -56,17 +73,29 @@ def print_transaction(tx: TransactionRecord, verbose: bool, name, address_prefix
         print(f"Amount {description}: {wheat_amount} {name}")
         print(f"To address: {to_address}")
         print("Created at:", datetime.fromtimestamp(tx.created_at_time).strftime("%Y-%m-%d %H:%M:%S"))
+        if coin_record is not None:
+            print(
+                "Recipient claimable time:",
+                datetime.fromtimestamp(tx.created_at_time + coin_record["metadata"]["time_lock"]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+            )
         print("")
 
 
 def get_mojo_per_unit(wallet_type: WalletType) -> int:
     mojo_per_unit: int
-    if wallet_type == WalletType.STANDARD_WALLET or wallet_type == WalletType.POOLING_WALLET:
+    if wallet_type in {
+        WalletType.STANDARD_WALLET,
+        WalletType.POOLING_WALLET,
+        WalletType.DATA_LAYER,
+        WalletType.VC,
+    }:  # pragma: no cover
         mojo_per_unit = units["wheat"]
     elif wallet_type == WalletType.CAT:
         mojo_per_unit = units["cat"]
     else:
-        raise LookupError("Only standard wallet, CAT wallets, and Plot NFTs are supported")
+        raise LookupError(f"Operation is not supported for Wallet type {wallet_type.name}")
 
     return mojo_per_unit
 
@@ -82,18 +111,23 @@ async def get_wallet_type(wallet_id: int, wallet_client: WalletRpcClient) -> Wal
     raise LookupError(f"Wallet ID not found: {wallet_id}")
 
 
-async def get_name_for_wallet_id(
+async def get_unit_name_for_wallet_id(
     config: Dict[str, Any],
     wallet_type: WalletType,
     wallet_id: int,
     wallet_client: WalletRpcClient,
 ):
-    if wallet_type == WalletType.STANDARD_WALLET or wallet_type == WalletType.POOLING_WALLET:
+    if wallet_type in {
+        WalletType.STANDARD_WALLET,
+        WalletType.POOLING_WALLET,
+        WalletType.DATA_LAYER,
+        WalletType.VC,
+    }:  # pragma: no cover
         name = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"].upper()
     elif wallet_type == WalletType.CAT:
-        name = await wallet_client.get_cat_name(wallet_id=str(wallet_id))
+        name = await wallet_client.get_cat_name(wallet_id=wallet_id)
     else:
-        raise LookupError("Only standard wallet, CAT wallets, and Plot NFTs are supported")
+        raise LookupError(f"Operation is not supported for Wallet type {wallet_type.name}")
 
     return name
 
@@ -101,13 +135,15 @@ async def get_name_for_wallet_id(
 async def get_transaction(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     transaction_id = bytes32.from_hexstr(args["tx_id"])
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
-    address_prefix = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
-    tx: TransactionRecord = await wallet_client.get_transaction("this is unused", transaction_id=transaction_id)
+    address_prefix = selected_network_address_prefix(config)
+    # The wallet id parameter is required by the client but unused by the RPC.
+    this_is_unused = 37
+    tx: TransactionRecord = await wallet_client.get_transaction(this_is_unused, transaction_id=transaction_id)
 
     try:
         wallet_type = await get_wallet_type(wallet_id=tx.wallet_id, wallet_client=wallet_client)
         mojo_per_unit = get_mojo_per_unit(wallet_type=wallet_type)
-        name = await get_name_for_wallet_id(
+        name = await get_unit_name_for_wallet_id(
             config=config,
             wallet_type=wallet_type,
             wallet_id=tx.wallet_id,
@@ -126,7 +162,7 @@ async def get_transaction(args: dict, wallet_client: WalletRpcClient, fingerprin
     )
 
 
-async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
     wallet_id = args["id"]
     paginate = args["paginate"]
     if paginate is None:
@@ -135,20 +171,26 @@ async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerpri
     limit = args["limit"]
     sort_key = args["sort_key"]
     reverse = args["reverse"]
-
+    type_filter = (
+        None
+        if not args["clawback"]
+        else TransactionTypeFilter.include(
+            [TransactionType.INCOMING_CLAWBACK_RECEIVE, TransactionType.INCOMING_CLAWBACK_SEND]
+        )
+    )
     txs: List[TransactionRecord] = await wallet_client.get_transactions(
-        wallet_id, start=offset, end=(offset + limit), sort_key=sort_key, reverse=reverse
+        wallet_id, start=offset, end=(offset + limit), sort_key=sort_key, reverse=reverse, type_filter=type_filter
     )
 
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
-    address_prefix = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
+    address_prefix = selected_network_address_prefix(config)
     if len(txs) == 0:
         print("There are no transactions to this address")
 
     try:
         wallet_type = await get_wallet_type(wallet_id=wallet_id, wallet_client=wallet_client)
         mojo_per_unit = get_mojo_per_unit(wallet_type=wallet_type)
-        name = await get_name_for_wallet_id(
+        name = await get_unit_name_for_wallet_id(
             config=config,
             wallet_type=wallet_type,
             wallet_id=wallet_id,
@@ -157,18 +199,30 @@ async def get_transactions(args: dict, wallet_client: WalletRpcClient, fingerpri
     except LookupError as e:
         print(e.args[0])
         return
-
+    skipped = 0
     num_per_screen = 5 if paginate else len(txs)
     for i in range(0, len(txs), num_per_screen):
         for j in range(0, num_per_screen):
-            if i + j >= len(txs):
+            if i + j + skipped >= len(txs):
                 break
+            coin_record: Optional[Dict[str, Any]] = None
+            if txs[i + j + skipped].type in CLAWBACK_TRANSACTION_TYPES:
+                coin_records = await wallet_client.get_coin_records(
+                    GetCoinRecords(coin_id_filter=HashFilter.include([txs[i + j + skipped].additions[0].name()]))
+                )
+                if len(coin_records["coin_records"]) > 0:
+                    coin_record = coin_records["coin_records"][0]
+                else:
+                    j -= 1
+                    skipped += 1
+                    continue
             print_transaction(
-                txs[i + j],
+                txs[i + j + skipped],
                 verbose=(args["verbose"] > 0),
                 name=name,
                 address_prefix=address_prefix,
                 mojo_per_unit=mojo_per_unit,
+                coin_record=coin_record,
             )
         if i + num_per_screen >= len(txs):
             return None
@@ -185,14 +239,18 @@ def check_unusual_transaction(amount: Decimal, fee: Decimal):
     return fee >= amount
 
 
-async def send(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+async def send(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
     wallet_id: int = args["id"]
     amount = Decimal(args["amount"])
     fee = Decimal(args["fee"])
     address = args["address"]
     override = args["override"]
     min_coin_amount = Decimal(args["min_coin_amount"])
+    max_coin_amount = Decimal(args["max_coin_amount"])
+    exclude_coin_ids: List[str] = args["exclude_coin_ids"]
     memo = args["memo"]
+    reuse_puzhash = args["reuse_puzhash"]
+    clawback_time_lock = args["clawback_time"]
     if memo is None:
         memos = None
     else:
@@ -204,29 +262,53 @@ async def send(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
             f"Pass in --override if you are sure you mean to do this."
         )
         return
-
+    if amount == 0:
+        print("You can not send an empty transaction")
+        return
+    if clawback_time_lock < 0:
+        print("Clawback time lock seconds cannot be negative.")
+        return
     try:
         typ = await get_wallet_type(wallet_id=wallet_id, wallet_client=wallet_client)
+        mojo_per_unit = get_mojo_per_unit(typ)
     except LookupError:
         print(f"Wallet id: {wallet_id} not found.")
         return
 
-    final_fee = uint64(int(fee * units["wheat"]))
-    final_amount: uint64
-    final_min_coin_amount: uint128
+    final_fee: uint64 = uint64(int(fee * units["wheat"]))  # fees are always in WHEAT mojos
+    final_amount: uint64 = uint64(int(amount * mojo_per_unit))
+    final_min_coin_amount: uint64 = uint64(int(min_coin_amount * mojo_per_unit))
+    final_max_coin_amount: uint64 = uint64(int(max_coin_amount * mojo_per_unit))
     if typ == WalletType.STANDARD_WALLET:
-        final_amount = uint64(int(amount * units["wheat"]))
-        final_min_coin_amount = uint128(int(min_coin_amount * units["wheat"]))
         print("Submitting transaction...")
         res = await wallet_client.send_transaction(
-            str(wallet_id), final_amount, address, final_fee, memos, final_min_coin_amount
+            wallet_id,
+            final_amount,
+            address,
+            final_fee,
+            memos,
+            final_min_coin_amount,
+            final_max_coin_amount,
+            exclude_coin_ids=exclude_coin_ids,
+            reuse_puzhash=reuse_puzhash,
+            puzzle_decorator_override=[
+                {"decorator": PuzzleDecoratorType.CLAWBACK.name, "clawback_timelock": clawback_time_lock}
+            ]
+            if clawback_time_lock > 0
+            else None,
         )
     elif typ == WalletType.CAT:
-        final_amount = uint64(int(amount * units["cat"]))
-        final_min_coin_amount = uint128(int(min_coin_amount * units["cat"]))
         print("Submitting transaction...")
         res = await wallet_client.cat_spend(
-            str(wallet_id), final_amount, address, final_fee, memos, final_min_coin_amount
+            wallet_id,
+            final_amount,
+            address,
+            final_fee,
+            memos,
+            final_min_coin_amount,
+            final_max_coin_amount,
+            exclude_coin_ids=exclude_coin_ids,
+            reuse_puzhash=reuse_puzhash,
         )
     else:
         print("Only standard wallet and CAT wallets are supported")
@@ -236,14 +318,14 @@ async def send(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
     start = time.time()
     while time.time() - start < 10:
         await asyncio.sleep(0.1)
-        tx = await wallet_client.get_transaction(str(wallet_id), tx_id)
+        tx = await wallet_client.get_transaction(wallet_id, tx_id)
         if len(tx.sent_to) > 0:
             print(transaction_submitted_msg(tx))
             print(transaction_status_msg(fingerprint, tx_id))
             return None
 
     print("Transaction not yet submitted to nodes")
-    print(f"Do 'wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_id}' to get status")
+    print(f"To get status, use command: wheat wallet get_transaction -f {fingerprint} -tx 0x{tx_id}")
 
 
 async def get_address(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
@@ -291,7 +373,7 @@ async def add_token(args: dict, wallet_client: WalletRpcClient, fingerprint: int
         if "fromhex()" in str(e):
             print(f"{asset_id} is not a valid Asset ID")
         else:
-            raise e
+            raise
 
 
 async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
@@ -299,6 +381,8 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
     requests: List[str] = args["requests"]
     filepath: str = args["filepath"]
     fee: int = int(Decimal(args["fee"]) * units["wheat"])
+    reuse_puzhash: Optional[bool] = args["reuse_puzhash"]
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
 
     if [] in [offers, requests]:
         print("Not creating offer: Must be offering and requesting at least one asset")
@@ -306,12 +390,21 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
         offer_dict: Dict[Union[uint32, str], int] = {}
         driver_dict: Dict[str, Any] = {}
         printable_dict: Dict[str, Tuple[str, int, int]] = {}  # Dict[asset_name, Tuple[amount, unit, multiplier]]
-        nft_warning: bool = False
+        royalty_asset_dict: Dict[Any, Tuple[Any, uint16]] = {}
+        fungible_asset_dict: Dict[Any, uint64] = {}
         for item in [*offers, *requests]:
             name, amount = tuple(item.split(":")[0:2])
             try:
-                id: Union[uint32, str] = bytes32.from_hexstr(name).hex()
-                unit = 1
+                b32_id = bytes32.from_hexstr(name)
+                id: Union[uint32, str] = b32_id.hex()
+                result = await wallet_client.cat_asset_id_to_name(b32_id)
+                if result is not None:
+                    name = result[1]
+                else:
+                    name = "Unknown CAT"
+                unit = units["cat"]
+                if item in offers:
+                    fungible_asset_dict[name] = uint64(abs(int(Decimal(amount) * unit)))
             except ValueError:
                 try:
                     hrp, _ = bech32_decode(name)
@@ -319,7 +412,6 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
                         coin_id = decode_puzzle_hash(name)
                         unit = 1
                         info = NFTInfo.from_json_dict((await wallet_client.get_nft_info(coin_id.hex()))["nft_info"])
-                        nft_warning = True
                         id = info.launcher_id.hex()
                         assert isinstance(id, str)
                         if item in requests:
@@ -334,6 +426,8 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
                                 },
                             }
                             if info.supports_did:
+                                assert info.royalty_puzzle_hash is not None
+                                assert info.royalty_percentage is not None
                                 driver_dict[id]["also"]["also"] = {
                                     "type": "ownership",
                                     "owner": "()",
@@ -344,6 +438,10 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
                                         "royalty_percentage": str(info.royalty_percentage),
                                     },
                                 }
+                                royalty_asset_dict[name] = (
+                                    encode_puzzle_hash(info.royalty_puzzle_hash, AddressType.WHEAT.hrp(config)),
+                                    info.royalty_percentage,
+                                )
                     else:
                         id = decode_puzzle_hash(name).hex()
                         assert hrp is not None
@@ -354,8 +452,10 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
                         name = "WHEAT"
                         unit = units["wheat"]
                     else:
-                        name = await wallet_client.get_cat_name(str(id))
+                        name = await wallet_client.get_cat_name(id)
                         unit = units["cat"]
+                    if item in offers:
+                        fungible_asset_dict[name] = uint64(abs(int(Decimal(amount) * unit)))
             multiplier: int = -1 if item in offers else 1
             printable_dict[name] = (amount, unit, multiplier)
             if id in offer_dict:
@@ -368,19 +468,48 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
             print("--------------")
             print()
             print("OFFERING:")
-            for name, info in printable_dict.items():
-                amount, unit, multiplier = info
+            for name, data in printable_dict.items():
+                amount, unit, multiplier = data
                 if multiplier < 0:
                     print(f"  - {amount} {name} ({int(Decimal(amount) * unit)} mojos)")
             print("REQUESTING:")
-            for name, info in printable_dict.items():
-                amount, unit, multiplier = info
+            for name, data in printable_dict.items():
+                amount, unit, multiplier = data
                 if multiplier > 0:
                     print(f"  - {amount} {name} ({int(Decimal(amount) * unit)} mojos)")
 
-            if nft_warning:
+            if fee > 0:
+                print()
+                print(f"Including Fees: {Decimal(fee) / units['wheat']} WHEAT, {fee} mojos")
+
+            if royalty_asset_dict != {}:
+                royalty_summary: Dict[Any, List[Dict[str, Any]]] = await wallet_client.nft_calculate_royalties(
+                    royalty_asset_dict, fungible_asset_dict
+                )
+                total_amounts_requested: Dict[Any, int] = {}
+                print()
+                print("Royalties Summary:")
+                for nft_id, summaries in royalty_summary.items():
+                    print(f"  - For {nft_id}:")
+                    for summary in summaries:
+                        divisor = units["wheat"] if summary["asset"] == "WHEAT" else units["cat"]
+                        converted_amount = Decimal(summary["amount"]) / divisor
+                        total_amounts_requested.setdefault(summary["asset"], fungible_asset_dict[summary["asset"]])
+                        total_amounts_requested[summary["asset"]] += summary["amount"]
+                        print(
+                            f"    - {converted_amount} {summary['asset']} ({summary['amount']} mojos) to {summary['address']}"  # noqa
+                        )
+
+                print()
+                print("Total Amounts Offered:")
+                for asset, requested_amount in total_amounts_requested.items():
+                    divisor = units["wheat"] if asset == "WHEAT" else units["cat"]
+                    converted_amount = Decimal(requested_amount) / divisor
+                    print(f"  - {converted_amount} {asset} ({requested_amount} mojos)")
+
+                print()
                 nft_confirmation = input(
-                    "Offers for NFTs will have royalties automatically added.  "
+                    "Offers for NFTs will have royalties automatically added. "
                     + "Are you sure you would like to continue? (y/n): "
                 )
                 if nft_confirmation not in ["y", "yes"]:
@@ -391,29 +520,33 @@ async def make_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
             if confirmation not in ["y", "yes"]:
                 print("Not creating offer...")
             else:
-                offer, trade_record = await wallet_client.create_offer_for_ids(
-                    offer_dict, driver_dict=driver_dict, fee=fee
-                )
-                if offer is not None:
-                    with open(pathlib.Path(filepath), "w") as file:
+                with open(pathlib.Path(filepath), "w") as file:
+                    offer, trade_record = await wallet_client.create_offer_for_ids(
+                        offer_dict, driver_dict=driver_dict, fee=fee, reuse_puzhash=reuse_puzhash
+                    )
+                    if offer is not None:
                         file.write(offer.to_bech32())
-                    print(f"Created offer with ID {trade_record.trade_id}")
-                    print(f"Use wheat wallet get_offers --id {trade_record.trade_id} -f {fingerprint} to view status")
-                else:
-                    print("Error creating offer")
+                        print(f"Created offer with ID {trade_record.trade_id}")
+                        print(
+                            f"Use wheat wallet get_offers --id {trade_record.trade_id} -f {fingerprint} to view status"
+                        )
+                    else:
+                        print("Error creating offer")
 
 
 def timestamp_to_time(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
-async def print_offer_summary(cat_name_resolver: CATNameResolver, sum_dict: Dict[str, int], has_fee: bool = False):
+async def print_offer_summary(
+    cat_name_resolver: CATNameResolver, sum_dict: Dict[str, int], has_fee: bool = False, network_wheat="WHEAT"
+):
     for asset_id, amount in sum_dict.items():
         description: str = ""
         unit: int = units["wheat"]
         wid: str = "1" if asset_id == "wheat" else ""
         mojo_amount: int = int(Decimal(amount))
-        name: str = "WHEAT"
+        name: str = network_wheat
         if asset_id != "wheat":
             name = asset_id
             if asset_id == "unknown":
@@ -445,7 +578,7 @@ async def print_trade_record(record, wallet_client: WalletRpcClient, summaries: 
     print(f"Record with id: {record.trade_id}")
     print("---------------")
     print(f"Created at: {timestamp_to_time(record.created_at_time)}")
-    print(f"Confirmed at: {record.confirmed_at_index}")
+    print(f"Confirmed at: {record.confirmed_at_index if record.confirmed_at_index > 0 else 'Not confirmed'}")
     print(f"Accepted at: {timestamp_to_time(record.accepted_at_time) if record.accepted_at_time else 'N/A'}")
     print(f"Status: {TradeStatus(record.status).name}")
     if summaries:
@@ -453,7 +586,7 @@ async def print_trade_record(record, wallet_client: WalletRpcClient, summaries: 
         offer = Offer.from_bytes(record.offer)
         offered, requested, _ = offer.summary()
         outbound_balances: Dict[str, int] = offer.get_pending_amounts()
-        fees: Decimal = Decimal(offer.bundle.fees())
+        fees: Decimal = Decimal(offer.fees())
         cat_name_resolver = wallet_client.cat_asset_id_to_name
         print("  OFFERED:")
         await print_offer_summary(cat_name_resolver, offered)
@@ -461,7 +594,7 @@ async def print_trade_record(record, wallet_client: WalletRpcClient, summaries: 
         await print_offer_summary(cat_name_resolver, requested)
         print("Pending Outbound Balances:")
         await print_offer_summary(cat_name_resolver, outbound_balances, has_fee=(fees > 0))
-        print(f"Included Fees: {fees / units['wheat']}")
+        print(f"Included Fees: {fees / units['wheat']} WHEAT, {fees} mojos")
     print("---------------")
 
 
@@ -511,7 +644,7 @@ async def get_offers(args: dict, wallet_client: WalletRpcClient, fingerprint: in
 
 
 async def take_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
-    if "." in args["file"]:
+    if os.path.exists(args["file"]):
         filepath = pathlib.Path(args["file"])
         with open(filepath, "r") as file:
             offer_hex: str = file.read()
@@ -521,6 +654,7 @@ async def take_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
 
     examine_only: bool = args["examine_only"]
     fee: int = int(Decimal(args["fee"]) * units["wheat"])
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
 
     try:
         offer = Offer.from_bech32(offer_hex)
@@ -528,47 +662,90 @@ async def take_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: in
         print("Please enter a valid offer file or hex blob")
         return
 
-    offered, requested, driver_dict = offer.summary()
+    ###
+    # This is temporary code, delete it when we no longer care about incorrectly parsing CAT1s
+    # There's also temp code in test_wallet_rpc.py and wallet_rpc_api.py
+    from wheat.types.spend_bundle import SpendBundle
+    from wheat.util.bech32m import bech32_decode, convertbits
+    from wheat.wallet.util.puzzle_compression import decompress_object_with_puzzles
+
+    hrpgot, data = bech32_decode(offer_hex, max_length=len(offer_hex))
+    if data is None:
+        raise ValueError("Invalid Offer")
+    decoded = convertbits(list(data), 5, 8, False)
+    decoded_bytes = bytes(decoded)
+    try:
+        decompressed_bytes = decompress_object_with_puzzles(decoded_bytes)
+    except TypeError:
+        decompressed_bytes = decoded_bytes
+    bundle = SpendBundle.from_bytes(decompressed_bytes)
+    for spend in bundle.coin_spends:
+        mod, _ = spend.puzzle_reveal.to_program().uncurry()
+        if mod.get_tree_hash() == bytes32.from_hexstr(
+            "72dec062874cd4d3aab892a0906688a1ae412b0109982e1797a170add88bdcdc"
+        ):
+            raise ValueError("CAT1s are no longer supported")
+    ###
+
+    offered, requested, _ = offer.summary()
     cat_name_resolver = wallet_client.cat_asset_id_to_name
+    network_wheat = AddressType.WHEAT.hrp(config).upper()
     print("Summary:")
     print("  OFFERED:")
-    await print_offer_summary(cat_name_resolver, offered)
+    await print_offer_summary(cat_name_resolver, offered, network_wheat=network_wheat)
     print("  REQUESTED:")
-    await print_offer_summary(cat_name_resolver, requested)
+    await print_offer_summary(cat_name_resolver, requested, network_wheat=network_wheat)
 
     print()
 
-    nft_coin_id: Optional[bytes32] = nft_coin_id_supporting_royalties_from_offer(driver_dict)
-    nft_royalty_percentage: int = (
-        0 if nft_coin_id is None else await get_nft_royalty_percentage(nft_coin_id, wallet_client)
-    )
-    nft_total_amount_requested_str: Optional[str] = None
-    if nft_coin_id is not None and nft_royalty_percentage > 0:
-        print("NFT Royalty Fee:")
-        nft_royalty_asset_id, nft_royalty_amount, nft_total_amount_requested = calculate_nft_royalty_amount(
-            offered, requested, nft_coin_id, nft_royalty_percentage
-        )
-        nft_royalty_currency: str = "Unknown CAT"
-        if nft_royalty_asset_id == "wheat":
-            nft_royalty_currency = "WHEAT"
-        else:
-            result = await cat_name_resolver(bytes32.fromhex(nft_royalty_asset_id))
-            if result is not None:
-                nft_royalty_currency = result[1]
+    royalty_asset_dict: Dict[Any, Tuple[Any, uint16]] = {}
+    for royalty_asset_id in nft_coin_ids_supporting_royalties_from_offer(offer):
+        if royalty_asset_id.hex() in offered:
+            percentage, address = await get_nft_royalty_percentage_and_address(royalty_asset_id, wallet_client)
+            royalty_asset_dict[encode_puzzle_hash(royalty_asset_id, AddressType.NFT.hrp(config))] = (
+                encode_puzzle_hash(address, AddressType.WHEAT.hrp(config)),
+                percentage,
+            )
 
-        nft_royalty_divisor = units["wheat"] if nft_royalty_asset_id == "wheat" else units["cat"]
-        nft_total_amount_requested_str = (
-            f"{Decimal(nft_total_amount_requested) / nft_royalty_divisor} {nft_royalty_currency}"
-        )
-        print(
-            f"      {Decimal(nft_royalty_amount) / nft_royalty_divisor} {nft_royalty_currency} "
-            f"({nft_royalty_amount} mojos)"
-        )
+    if royalty_asset_dict != {}:
+        fungible_asset_dict: Dict[Any, uint64] = {}
+        for fungible_asset_id in fungible_assets_from_offer(offer):
+            fungible_asset_id_str = fungible_asset_id.hex() if fungible_asset_id is not None else "wheat"
+            if fungible_asset_id_str in requested:
+                nft_royalty_currency: str = "Unknown CAT"
+                if fungible_asset_id is None:
+                    nft_royalty_currency = network_wheat
+                else:
+                    result = await wallet_client.cat_asset_id_to_name(fungible_asset_id)
+                    if result is not None:
+                        nft_royalty_currency = result[1]
+                fungible_asset_dict[nft_royalty_currency] = uint64(requested[fungible_asset_id_str])
 
-    print(f"Included Fees: {Decimal(offer.bundle.fees()) / units['wheat']}")
+        if fungible_asset_dict != {}:
+            royalty_summary: Dict[Any, List[Dict[str, Any]]] = await wallet_client.nft_calculate_royalties(
+                royalty_asset_dict, fungible_asset_dict
+            )
+            total_amounts_requested: Dict[Any, int] = {}
+            print("Royalties Summary:")
+            for nft_id, summaries in royalty_summary.items():
+                print(f"  - For {nft_id}:")
+                for summary in summaries:
+                    divisor = units["wheat"] if summary["asset"] == network_wheat else units["cat"]
+                    converted_amount = Decimal(summary["amount"]) / divisor
+                    total_amounts_requested.setdefault(summary["asset"], fungible_asset_dict[summary["asset"]])
+                    total_amounts_requested[summary["asset"]] += summary["amount"]
+                    print(
+                        f"    - {converted_amount} {summary['asset']} ({summary['amount']} mojos) to {summary['address']}"  # noqa
+                    )
 
-    if nft_total_amount_requested_str is not None:
-        print(f"Total Amount Requested: {nft_total_amount_requested_str}")
+            print()
+            print("Total Amounts Requested:")
+            for asset, amount in total_amounts_requested.items():
+                divisor = units["wheat"] if asset == network_wheat else units["cat"]
+                converted_amount = Decimal(amount) / divisor
+                print(f"  - {converted_amount} {asset} ({amount} mojos)")
+
+    print(f"Included Fees: {Decimal(offer.fees()) / units['wheat']} {network_wheat}, {offer.fees()} mojos")
 
     if not examine_only:
         print()
@@ -598,13 +775,17 @@ async def cancel_offer(args: dict, wallet_client: WalletRpcClient, fingerprint: 
 def wallet_coin_unit(typ: WalletType, address_prefix: str) -> Tuple[str, int]:
     if typ == WalletType.CAT:
         return "", units["cat"]
-    if typ in [WalletType.STANDARD_WALLET, WalletType.POOLING_WALLET, WalletType.MULTI_SIG, WalletType.RATE_LIMITED]:
+    if typ in [WalletType.STANDARD_WALLET, WalletType.POOLING_WALLET, WalletType.MULTI_SIG]:
         return address_prefix, units["wheat"]
     return "", units["mojo"]
 
 
-def print_balance(amount: int, scale: int, address_prefix: str) -> str:
-    ret = f"{amount / scale} {address_prefix} "
+def print_balance(amount: int, scale: int, address_prefix: str, *, decimal_only: bool = False) -> str:
+    if decimal_only:  # dont use scientific notation.
+        final_amount = f"{amount / scale:.12f}"
+    else:
+        final_amount = f"{amount / scale}"
+    ret = f"{final_amount} {address_prefix} "
     if scale > 1:
         ret += f"({amount} mojo)"
     return ret
@@ -616,7 +797,7 @@ async def print_balances(args: dict, wallet_client: WalletRpcClient, fingerprint
         wallet_type = WalletType(args["type"])
     summaries_response = await wallet_client.get_wallets(wallet_type)
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
-    address_prefix = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
+    address_prefix = selected_network_address_prefix(config)
 
     is_synced: bool = await wallet_client.get_synced()
     is_syncing: bool = await wallet_client.get_sync_status()
@@ -653,7 +834,7 @@ async def print_balances(args: dict, wallet_client: WalletRpcClient, fingerprint
             print()
             print(f"{summary['name']}:")
             print(f"{indent}{'-Total Balance:'.ljust(23)} {total_balance}")
-            print(f"{indent}{'-Pending Total Balance:'.ljust(23)} " f"{unconfirmed_wallet_balance}")
+            print(f"{indent}{'-Pending Total Balance:'.ljust(23)} {unconfirmed_wallet_balance}")
             print(f"{indent}{'-Spendable:'.ljust(23)} {spendable_balance}")
             print(f"{indent}{'-Type:'.ljust(23)} {typ.name}")
             if typ == WalletType.DECENTRALIZED_ID:
@@ -671,98 +852,7 @@ async def print_balances(args: dict, wallet_client: WalletRpcClient, fingerprint
 
     print(" ")
     trusted_peers: Dict = config["wallet"].get("trusted_peers", {})
-    await print_connections(wallet_client, time, NodeType, trusted_peers)
-
-
-async def get_wallet(wallet_client: WalletRpcClient, fingerprint: int = None) -> Optional[Tuple[WalletRpcClient, int]]:
-    if fingerprint is not None:
-        fingerprints = [fingerprint]
-    else:
-        fingerprints = await wallet_client.get_public_keys()
-    if len(fingerprints) == 0:
-        print("No keys loaded. Run 'wheat keys generate' or import a key")
-        return None
-    if len(fingerprints) == 1:
-        fingerprint = fingerprints[0]
-    if fingerprint is not None:
-        log_in_response = await wallet_client.log_in(fingerprint)
-    else:
-        logged_in_fingerprint: Optional[int] = await wallet_client.get_logged_in_fingerprint()
-        spacing: str = "  " if logged_in_fingerprint is not None else ""
-        current_sync_status: str = ""
-        if logged_in_fingerprint is not None:
-            if await wallet_client.get_synced():
-                current_sync_status = "Synced"
-            elif await wallet_client.get_sync_status():
-                current_sync_status = "Syncing"
-            else:
-                current_sync_status = "Not Synced"
-        print("Wallet keys:")
-        for i, fp in enumerate(fingerprints):
-            row: str = f"{i + 1}) "
-            row += "* " if fp == logged_in_fingerprint else spacing
-            row += f"{fp}"
-            if fp == logged_in_fingerprint and len(current_sync_status) > 0:
-                row += f" ({current_sync_status})"
-            print(row)
-        val = None
-        prompt: str = (
-            f"Choose a wallet key [1-{len(fingerprints)}] ('q' to quit, or Enter to use {logged_in_fingerprint}): "
-        )
-        while val is None:
-            val = input(prompt)
-            if val == "q":
-                return None
-            elif val == "" and logged_in_fingerprint is not None:
-                fingerprint = logged_in_fingerprint
-                break
-            elif not val.isdigit():
-                val = None
-            else:
-                index = int(val) - 1
-                if index < 0 or index >= len(fingerprints):
-                    print("Invalid value")
-                    val = None
-                    continue
-                else:
-                    fingerprint = fingerprints[index]
-        assert fingerprint is not None
-        log_in_response = await wallet_client.log_in(fingerprint)
-
-    if log_in_response["success"] is False:
-        print(f"Login failed: {log_in_response}")
-        return None
-    return wallet_client, fingerprint
-
-
-async def execute_with_wallet(
-    wallet_rpc_port: Optional[int], fingerprint: int, extra_params: Dict, function: Callable
-) -> None:
-    try:
-        config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
-        self_hostname = config["self_hostname"]
-        if wallet_rpc_port is None:
-            wallet_rpc_port = config["wallet"]["rpc_port"]
-        wallet_client = await WalletRpcClient.create(self_hostname, uint16(wallet_rpc_port), DEFAULT_ROOT_PATH, config)
-        wallet_client_f = await get_wallet(wallet_client, fingerprint=fingerprint)
-        if wallet_client_f is None:
-            wallet_client.close()
-            await wallet_client.await_closed()
-            return None
-        wallet_client, fingerprint = wallet_client_f
-        await function(extra_params, wallet_client, fingerprint)
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        if isinstance(e, aiohttp.ClientConnectorError):
-            print(
-                f"Connection error. Check if the wallet is running at {wallet_rpc_port}. "
-                "You can run the wallet via:\n\twheat start wallet"
-            )
-        else:
-            print(f"Exception from 'wallet' {e}")
-    wallet_client.close()
-    await wallet_client.await_closed()
+    await print_connections(wallet_client, trusted_peers)
 
 
 async def create_did_wallet(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
@@ -801,6 +891,80 @@ async def get_did(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) 
         print(f"Failed to get DID: {e}")
 
 
+async def get_did_info(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    coin_id: str = args["coin_id"]
+    latest: bool = args["latest"]
+    did_padding_length = 23
+    try:
+        response = await wallet_client.get_did_info(coin_id, latest)
+        print(f"{'DID:'.ljust(did_padding_length)} {response['did_id']}")
+        print(f"{'Coin ID:'.ljust(did_padding_length)} {response['latest_coin']}")
+        print(f"{'Inner P2 Address:'.ljust(did_padding_length)} {response['p2_address']}")
+        print(f"{'Public Key:'.ljust(did_padding_length)} {response['public_key']}")
+        print(f"{'Launcher ID:'.ljust(did_padding_length)} {response['launcher_id']}")
+        print(f"{'DID Metadata:'.ljust(did_padding_length)} {response['metadata']}")
+        print(f"{'Recovery List Hash:'.ljust(did_padding_length)} {response['recovery_list_hash']}")
+        print(f"{'Recovery Required Verifications:'.ljust(did_padding_length)} {response['num_verification']}")
+        print(f"{'Last Spend Puzzle:'.ljust(did_padding_length)} {response['full_puzzle']}")
+        print(f"{'Last Spend Solution:'.ljust(did_padding_length)} {response['solution']}")
+        print(f"{'Last Spend Hints:'.ljust(did_padding_length)} {response['hints']}")
+
+    except Exception as e:
+        print(f"Failed to get DID details: {e}")
+
+
+async def update_did_metadata(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    try:
+        response = await wallet_client.update_did_metadata(
+            args["did_wallet_id"], json.loads(args["metadata"]), args["reuse_puzhash"]
+        )
+        print(f"Successfully updated DID wallet ID: {response['wallet_id']}, Spend Bundle: {response['spend_bundle']}")
+    except Exception as e:
+        print(f"Failed to update DID metadata: {e}")
+
+
+async def did_message_spend(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    try:
+        response = await wallet_client.did_message_spend(
+            args["did_wallet_id"], args["puzzle_announcements"], args["coin_announcements"]
+        )
+        print(f"Message Spend Bundle: {response['spend_bundle']}")
+    except Exception as e:
+        print(f"Failed to update DID metadata: {e}")
+
+
+async def transfer_did(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    try:
+        response = await wallet_client.did_transfer_did(
+            args["did_wallet_id"],
+            args["target_address"],
+            args["fee"],
+            args["with_recovery"],
+            args["reuse_puzhash"],
+        )
+        print(f"Successfully transferred DID to {args['target_address']}")
+        print(f"Transaction ID: {response['transaction_id']}")
+        print(f"Transaction: {response['transaction']}")
+    except Exception as e:
+        print(f"Failed to transfer DID: {e}")
+
+
+async def find_lost_did(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    try:
+        response = await wallet_client.find_lost_did(
+            args["coin_id"],
+            args["recovery_list_hash"],
+            args["metadata"],
+            args["num_verification"],
+        )
+        if response["success"]:
+            print(f"Successfully found lost DID {args['coin_id']}, latest coin ID: {response['latest_coin_id']}")
+        else:
+            print(f"Cannot find lost DID {args['coin_id']}: {response['error']}")
+    except Exception as e:
+        print(f"Failed to find lost DID: {e}")
+
+
 async def create_nft_wallet(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     did_id = args["did_id"]
     name = args["name"]
@@ -814,8 +978,17 @@ async def create_nft_wallet(args: Dict, wallet_client: WalletRpcClient, fingerpr
 
 async def mint_nft(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     wallet_id = args["wallet_id"]
-    royalty_address = args["royalty_address"]
-    target_address = args["target_address"]
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+    royalty_address = (
+        None
+        if not args["royalty_address"]
+        else ensure_valid_address(args["royalty_address"], allowed_types={AddressType.WHEAT}, config=config)
+    )
+    target_address = (
+        None
+        if not args["target_address"]
+        else ensure_valid_address(args["target_address"], allowed_types={AddressType.WHEAT}, config=config)
+    )
     no_did_ownership = args["no_did_ownership"]
     hash = args["hash"]
     uris = args["uris"]
@@ -823,7 +996,7 @@ async def mint_nft(args: Dict, wallet_client: WalletRpcClient, fingerprint: int)
     metadata_uris = args["metadata_uris"]
     license_hash = args["license_hash"]
     license_uris = args["license_uris"]
-    edition_count = args["edition_count"]
+    edition_total = args["edition_total"]
     edition_number = args["edition_number"]
     fee: int = int(Decimal(args["fee"]) * units["wheat"])
     royalty_percentage = args["royalty_percentage"]
@@ -852,11 +1025,12 @@ async def mint_nft(args: Dict, wallet_client: WalletRpcClient, fingerprint: int)
             metadata_uris,
             license_hash,
             license_uris,
-            edition_count,
+            edition_total,
             edition_number,
             fee,
             royalty_percentage,
             did_id,
+            reuse_puzhash=args["reuse_puzhash"],
         )
         spend_bundle = response["spend_bundle"]
         print(f"NFT minted Successfully with spend bundle: {spend_bundle}")
@@ -885,7 +1059,9 @@ async def add_uri_to_nft(args: Dict, wallet_client: WalletRpcClient, fingerprint
         else:
             raise ValueError("You must provide at least one of the URI flags")
         fee: int = int(Decimal(args["fee"]) * units["wheat"])
-        response = await wallet_client.add_uri_to_nft(wallet_id, nft_coin_id, key, uri_value, fee)
+        response = await wallet_client.add_uri_to_nft(
+            wallet_id, nft_coin_id, key, uri_value, fee, args["reuse_puzhash"]
+        )
         spend_bundle = response["spend_bundle"]
         print(f"URI added successfully with spend bundle: {spend_bundle}")
     except Exception as e:
@@ -896,32 +1072,37 @@ async def transfer_nft(args: Dict, wallet_client: WalletRpcClient, fingerprint: 
     try:
         wallet_id = args["wallet_id"]
         nft_coin_id = args["nft_coin_id"]
-        target_address = args["target_address"]
+        config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+        target_address = ensure_valid_address(args["target_address"], allowed_types={AddressType.WHEAT}, config=config)
         fee: int = int(Decimal(args["fee"]) * units["wheat"])
-        response = await wallet_client.transfer_nft(wallet_id, nft_coin_id, target_address, fee)
+        response = await wallet_client.transfer_nft(
+            wallet_id, nft_coin_id, target_address, fee, reuse_puzhash=args["reuse_puzhash"]
+        )
         spend_bundle = response["spend_bundle"]
         print(f"NFT transferred successfully with spend bundle: {spend_bundle}")
     except Exception as e:
         print(f"Failed to transfer NFT: {e}")
 
 
-def print_nft_info(nft: NFTInfo) -> None:
+def print_nft_info(nft: NFTInfo, *, config: Dict[str, Any]) -> None:
     indent: str = "   "
-    owner_did = None if nft.owner_did is None else encode_puzzle_hash(nft.owner_did, DID_HRP)
+    owner_did = None if nft.owner_did is None else encode_puzzle_hash(nft.owner_did, AddressType.DID.hrp(config))
+    minter_did = None if nft.minter_did is None else encode_puzzle_hash(nft.minter_did, AddressType.DID.hrp(config))
     print()
-    print(f"{'NFT identifier:'.ljust(26)} {encode_puzzle_hash(nft.launcher_id, NFT_HRP)}")
+    print(f"{'NFT identifier:'.ljust(26)} {encode_puzzle_hash(nft.launcher_id, AddressType.NFT.hrp(config))}")
     print(f"{'Launcher coin ID:'.ljust(26)} {nft.launcher_id}")
     print(f"{'Launcher puzhash:'.ljust(26)} {nft.launcher_puzhash}")
     print(f"{'Current NFT coin ID:'.ljust(26)} {nft.nft_coin_id}")
     print(f"{'On-chain data/info:'.ljust(26)} {nft.chain_info}")
     print(f"{'Owner DID:'.ljust(26)} {owner_did}")
+    print(f"{'Minter DID:'.ljust(26)} {minter_did}")
     print(f"{'Royalty percentage:'.ljust(26)} {nft.royalty_percentage}")
     print(f"{'Royalty puzhash:'.ljust(26)} {nft.royalty_puzzle_hash}")
     print(f"{'NFT content hash:'.ljust(26)} {nft.data_hash.hex()}")
     print(f"{'Metadata hash:'.ljust(26)} {nft.metadata_hash.hex()}")
     print(f"{'License hash:'.ljust(26)} {nft.license_hash.hex()}")
-    print(f"{'NFT series total:'.ljust(26)} {nft.series_total}")
-    print(f"{'Current NFT number in the series:'.ljust(26)} {nft.series_number}")
+    print(f"{'NFT edition total:'.ljust(26)} {nft.edition_total}")
+    print(f"{'Current NFT number in the edition:'.ljust(26)} {nft.edition_number}")
     print(f"{'Metadata updater puzhash:'.ljust(26)} {nft.updater_puzhash}")
     print(f"{'NFT minting block height:'.ljust(26)} {nft.mint_height}")
     print(f"{'Inner puzzle supports DID:'.ljust(26)} {nft.supports_did}")
@@ -943,12 +1124,13 @@ def print_nft_info(nft: NFTInfo) -> None:
 async def list_nfts(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     wallet_id = args["wallet_id"]
     try:
+        config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
         response = await wallet_client.list_nfts(wallet_id)
         nft_list = response["nft_list"]
         if len(nft_list) > 0:
             for n in nft_list:
                 nft = NFTInfo.from_json_dict(n)
-                print_nft_info(nft)
+                print_nft_info(nft, config=config)
         else:
             print(f"No NFTs found for wallet with id {wallet_id} on key {fingerprint}")
     except Exception as e:
@@ -961,7 +1143,9 @@ async def set_nft_did(args: Dict, wallet_client: WalletRpcClient, fingerprint: i
     nft_coin_id = args["nft_coin_id"]
     fee: int = int(Decimal(args["fee"]) * units["wheat"])
     try:
-        response = await wallet_client.set_nft_did(wallet_id, did_id, nft_coin_id, fee)
+        response = await wallet_client.set_nft_did(
+            wallet_id, did_id, nft_coin_id, fee, reuse_puzhash=args["reuse_puzhash"]
+        )
         spend_bundle = response["spend_bundle"]
         print(f"Transaction to set DID on NFT has been initiated with: {spend_bundle}")
     except Exception as e:
@@ -971,16 +1155,21 @@ async def set_nft_did(args: Dict, wallet_client: WalletRpcClient, fingerprint: i
 async def get_nft_info(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
     nft_coin_id = args["nft_coin_id"]
     try:
+        config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
         response = await wallet_client.get_nft_info(nft_coin_id)
         nft_info = NFTInfo.from_json_dict(response["nft_info"])
-        print_nft_info(nft_info)
+        print_nft_info(nft_info, config=config)
     except Exception as e:
         print(f"Failed to get NFT info: {e}")
 
 
-async def get_nft_royalty_percentage(nft_coin_id: bytes32, wallet_client: WalletRpcClient) -> int:
+async def get_nft_royalty_percentage_and_address(
+    nft_coin_id: bytes32, wallet_client: WalletRpcClient
+) -> Tuple[uint16, bytes32]:
     info = NFTInfo.from_json_dict((await wallet_client.get_nft_info(nft_coin_id.hex()))["nft_info"])
-    return info.royalty_percentage if info.royalty_percentage is not None else 0
+    assert info.royalty_puzzle_hash is not None
+    percentage = uint16(info.royalty_percentage) if info.royalty_percentage is not None else 0
+    return uint16(percentage), info.royalty_puzzle_hash
 
 
 def calculate_nft_royalty_amount(
@@ -999,17 +1188,260 @@ def calculate_nft_royalty_amount(
     return royalty_asset_id, royalty_amount, total_amount_requested
 
 
-def driver_dict_asset_is_nft_supporting_royalties(driver_dict: Dict[str, Any], asset_id: str) -> bool:
-    asset_dict: Dict[str, Any] = driver_dict[asset_id]
-    return (
-        asset_dict.get("type") == "singleton"
-        and asset_dict.get("also", {}).get("type") == "metadata"
-        and asset_dict.get("also", {}).get("also", {}).get("type") == "ownership"
+def driver_dict_asset_is_nft_supporting_royalties(driver_dict: Dict[bytes32, PuzzleInfo], asset_id: bytes32) -> bool:
+    asset_dict: PuzzleInfo = driver_dict[asset_id]
+    return asset_dict.check_type(
+        [
+            AssetType.SINGLETON.value,
+            AssetType.METADATA.value,
+            AssetType.OWNERSHIP.value,
+        ]
     )
 
 
-def nft_coin_id_supporting_royalties_from_offer(driver_dict: Dict[str, Any]) -> Optional[bytes32]:
-    nft_asset_id: Optional[str] = next(
-        (key for key in driver_dict.keys() if driver_dict_asset_is_nft_supporting_royalties(driver_dict, key)), None
+def driver_dict_asset_is_fungible(driver_dict: Dict[bytes32, PuzzleInfo], asset_id: bytes32) -> bool:
+    asset_dict: PuzzleInfo = driver_dict[asset_id]
+    return not asset_dict.check_type(
+        [
+            AssetType.SINGLETON.value,
+        ]
     )
-    return bytes32.fromhex(nft_asset_id) if nft_asset_id is not None else None
+
+
+def nft_coin_ids_supporting_royalties_from_offer(offer: Offer) -> List[bytes32]:
+    return [
+        key for key in offer.driver_dict.keys() if driver_dict_asset_is_nft_supporting_royalties(offer.driver_dict, key)
+    ]
+
+
+def fungible_assets_from_offer(offer: Offer) -> List[Optional[bytes32]]:
+    return [
+        asset for asset in offer.arbitrage() if asset is None or driver_dict_asset_is_fungible(offer.driver_dict, asset)
+    ]
+
+
+async def send_notification(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    address: bytes32 = decode_puzzle_hash(args["address"])
+    amount: uint64 = uint64(Decimal(args["amount"]) * units["wheat"])
+    message: bytes = bytes(args["message"], "utf8")
+    fee: uint64 = uint64(Decimal(args["fee"]) * units["wheat"])
+
+    tx = await wallet_client.send_notification(address, message, amount, fee)
+
+    print("Notification sent successfully.")
+    print(f"To get status, use command: wheat wallet get_transaction -f {fingerprint} -tx 0x{tx.name}")
+
+
+async def get_notifications(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    ids: Optional[List[bytes32]] = [bytes32.from_hexstr(id) for id in args["ids"]]
+    if ids is not None and len(ids) == 0:
+        ids = None
+
+    notifications = await wallet_client.get_notifications(ids=ids, pagination=(args["start"], args["end"]))
+    for notification in notifications:
+        print("")
+        print(f"ID: {notification.coin_id.hex()}")
+        print(f"message: {notification.message.decode('utf-8')}")
+        print(f"amount: {notification.amount}")
+
+
+async def delete_notifications(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    ids: Optional[List[bytes32]] = [bytes32.from_hexstr(id) for id in args["ids"]]
+
+    if args["all"]:
+        print(f"Success: {await wallet_client.delete_notifications()}")
+    else:
+        print(f"Success: {await wallet_client.delete_notifications(ids=ids)}")
+
+
+async def sign_message(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    if args["type"] == AddressType.WHEAT:
+        pubkey, signature, signing_mode = await wallet_client.sign_message_by_address(args["address"], args["message"])
+    elif args["type"] == AddressType.DID:
+        pubkey, signature, signing_mode = await wallet_client.sign_message_by_id(args["did_id"], args["message"])
+    elif args["type"] == AddressType.NFT:
+        pubkey, signature, signing_mode = await wallet_client.sign_message_by_id(args["nft_id"], args["message"])
+    else:
+        print("Invalid wallet type.")
+        return
+    print("")
+    print(f'Message: {args["message"]}')
+    print(f"Public Key: {pubkey}")
+    print(f"Signature: {signature}")
+    print(f"Signing Mode: {signing_mode}")
+
+
+async def spend_clawback(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    if args["tx_ids"] == "":
+        print(" -ids Transaction ID is required.")
+        return
+    tx_ids = []
+    for tid in args["tx_ids"].split(","):
+        print(f"Batch fee {tid}")
+        tx_ids.append(bytes32.from_hexstr(tid))
+    fee = Decimal(args["fee"])
+    if fee < 0:
+        print("Batch fee cannot be negative.")
+        return
+    response = await wallet_client.spend_clawback_coins(tx_ids, int(fee * units["wheat"]))
+    print(str(response))
+
+
+async def mint_vc(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
+    vc_record, txs = await wallet_client.vc_mint(
+        decode_puzzle_hash(ensure_valid_address(args["did"], allowed_types={AddressType.DID}, config=config)),
+        None
+        if args["target_address"] is None
+        else decode_puzzle_hash(
+            ensure_valid_address(args["target_address"], allowed_types={AddressType.WHEAT}, config=config)
+        ),
+        uint64(0) if args["fee"] is None else uint64(int(Decimal(args["fee"]) * units["wheat"])),
+    )
+
+    print(f"New VC with launcher ID minted: {vc_record.vc.launcher_id}")
+    print("Relevant TX records:")
+    print("")
+    for tx in txs:
+        print_transaction(
+            tx,
+            verbose=False,
+            name="WHEAT",
+            address_prefix=selected_network_address_prefix(config),
+            mojo_per_unit=get_mojo_per_unit(wallet_type=WalletType.STANDARD_WALLET),
+        )
+
+
+async def get_vcs(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
+    vc_records, proofs = await wallet_client.vc_get_list(args["start"], args["count"])
+    print("Proofs:")
+    for hash, proof_dict in proofs.items():
+        if proof_dict is not None:
+            print(f"- {hash}")
+            for proof in proof_dict:
+                print(f"  - {proof}")
+    for record in vc_records:
+        print("")
+        print(f"Launcher ID: {record.vc.launcher_id.hex()}")
+        print(f"Coin ID: {record.vc.coin.name().hex()}")
+        print(
+            f"Inner Address: {encode_puzzle_hash(record.vc.inner_puzzle_hash, selected_network_address_prefix(config))}"
+        )
+        if record.vc.proof_hash is None:
+            pass
+        else:
+            print(f"Proof Hash: {record.vc.proof_hash.hex()}")
+
+
+async def spend_vc(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
+    txs = await wallet_client.vc_spend(
+        bytes32.from_hexstr(args["vc_id"]),
+        new_puzhash=None if args["new_puzhash"] is None else bytes32.from_hexstr(args["new_puzhash"]),
+        new_proof_hash=bytes32.from_hexstr(args["new_proof_hash"]),
+        fee=uint64(0) if args["fee"] is None else uint64(int(Decimal(args["fee"]) * units["wheat"])),
+        reuse_puzhash=args["reuse_puzhash"],
+    )
+
+    print("Proofs successfully updated!")
+    print("Relevant TX records:")
+    print("")
+    for tx in txs:
+        print_transaction(
+            tx,
+            verbose=False,
+            name="WHEAT",
+            address_prefix=selected_network_address_prefix(config),
+            mojo_per_unit=get_mojo_per_unit(wallet_type=WalletType.STANDARD_WALLET),
+        )
+
+
+async def add_proof_reveal(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    if len(args["proofs"]) == 0:
+        print("Must specify at least one proof")
+        return
+
+    proof_dict: Dict[str, str] = {proof: "1" for proof in args["proofs"]}
+    if args["root_only"]:
+        print(f"Proof Hash: {VCProofs(proof_dict).root()}")
+        return
+    else:
+        await wallet_client.vc_add_proofs(proof_dict)
+        print("Proofs added to DB successfully!")
+        return
+
+
+async def get_proofs_for_root(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    proof_dict: Dict[str, str] = await wallet_client.vc_get_proofs_for_root(bytes32.from_hexstr(args["proof_hash"]))
+    print("Proofs:")
+    for proof in proof_dict:
+        print(f" - {proof}")
+
+
+async def revoke_vc(args: Dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:  # pragma: no cover
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml", SERVICE_NAME)
+    if args["parent_coin_id"] is None:
+        if args["vc_id"] is None:
+            print("Must specify either --parent-coin-id or --vc-id")
+            return
+        record = await wallet_client.vc_get(bytes32.from_hexstr(args["vc_id"]))
+        if record is None:
+            print(f"Cannot find a VC with ID {args['vc_id']}")
+            return
+        parent_id: bytes32 = record.vc.coin.parent_coin_info
+    else:
+        parent_id = bytes32.from_hexstr(args["parent_coin_id"])
+    txs = await wallet_client.vc_revoke(
+        parent_id,
+        fee=uint64(0) if args["fee"] is None else uint64(int(Decimal(args["fee"]) * units["wheat"])),
+        reuse_puzhash=args["reuse_puzhash"],
+    )
+
+    print("VC successfully revoked!")
+    print("Relevant TX records:")
+    print("")
+    for tx in txs:
+        print_transaction(
+            tx,
+            verbose=False,
+            name="WHEAT",
+            address_prefix=selected_network_address_prefix(config),
+            mojo_per_unit=get_mojo_per_unit(wallet_type=WalletType.STANDARD_WALLET),
+        )
+
+
+async def find_pool_nft(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    launcher_id: str = args["launcher_id"]
+    contract_address: str = args["contract_address"]
+    response = await wallet_client.find_pool_nft(launcher_id, contract_address)
+    if "error" in response:
+        error = response["error"]
+        print(f"Error: {error}")
+        return
+    address = response["contract_address"]
+    delayed_puzzle_hash = response["delayed_puzzle_hash"]
+    total_amount = response["total_amount"] / units["wheat"]
+    record_amount = response["record_amount"] / units["wheat"]
+    balance_amount = response["balance_amount"] / units["wheat"]
+    print(f"Contract Address: {address}")
+    print(f"Delayed PuzzleHash: {delayed_puzzle_hash}")
+    print(f"Total Amount: {total_amount} WHEAT")
+    print(f"Balance Amount: {balance_amount} WHEAT")
+    print(f"Record Amount: {record_amount} WHEAT")
+
+
+async def recover_pool_nft(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    launcher_id: str = args["launcher_id"]
+    contract_address: str = args["contract_address"]
+    response = await wallet_client.recover_pool_nft(launcher_id, contract_address)
+    if "error" in response:
+        error = response["error"]
+        print(f"Error: {error}")
+        return
+    address = response["contract_address"]
+    status = response["status"]
+    amount = response["amount"] / units["wheat"]
+    print(f"Contract Address: {address}")
+    print(f"Record Amount: {amount} WHEAT")
+    print(f"Status: {status}")

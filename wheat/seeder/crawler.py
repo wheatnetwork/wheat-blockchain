@@ -1,24 +1,30 @@
+from __future__ import annotations
+
 import asyncio
+import ipaddress
 import logging
 import time
 import traceback
-import ipaddress
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiosqlite
 
-import wheat.server.ws_connection as ws
 from wheat.consensus.constants import ConsensusConstants
 from wheat.full_node.coin_store import CoinStore
+from wheat.full_node.full_node_api import FullNodeAPI
 from wheat.protocols import full_node_protocol
+from wheat.rpc.rpc_server import StateChangedProtocol, default_get_connections
 from wheat.seeder.crawl_store import CrawlStore
 from wheat.seeder.peer_record import PeerRecord, PeerReliability
+from wheat.server.outbound_message import NodeType
 from wheat.server.server import WheatServer
+from wheat.server.ws_connection import WSWheatConnection
 from wheat.types.peer_info import PeerInfo
-from wheat.util.path import mkdir, path_from_root
 from wheat.util.ints import uint32, uint64
+from wheat.util.network import resolve
+from wheat.util.path import path_from_root
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +34,7 @@ class Crawler:
     coin_store: CoinStore
     connection: aiosqlite.Connection
     config: Dict
-    server: Optional[WheatServer]
+    _server: Optional[WheatServer]
     crawl_store: Optional[CrawlStore]
     log: logging.Logger
     constants: ConsensusConstants
@@ -37,6 +43,15 @@ class Crawler:
     peer_count: int
     with_peak: set
     minimum_version_count: int
+
+    @property
+    def server(self) -> WheatServer:
+        # This is a stop gap until the class usage is refactored such the values of
+        # integral attributes are known at creation of the instance.
+        if self._server is None:
+            raise RuntimeError("server not assigned")
+
+        return self._server
 
     def __init__(
         self,
@@ -48,10 +63,10 @@ class Crawler:
         self.initialized = False
         self.root_path = root_path
         self.config = config
-        self.server = None
+        self._server = None
         self._shut_down = False  # Set to true to close all infinite loops
         self.constants = consensus_constants
-        self.state_changed_callback: Optional[Callable] = None
+        self.state_changed_callback: Optional[StateChangedProtocol] = None
         self.crawl_store = None
         self.log = log
         self.peer_count = 0
@@ -63,7 +78,7 @@ class Crawler:
         self.best_timestamp_per_peer: Dict[str, int] = {}
         crawler_db_path: str = config.get("crawler_db_path", "crawler.db")
         self.db_path = path_from_root(root_path, crawler_db_path)
-        mkdir(self.db_path.parent)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.bootstrap_peers = config["bootstrap_peers"]
         self.minimum_height = config["minimum_height"]
         self.other_peers_port = config["other_peers_port"]
@@ -75,21 +90,23 @@ class Crawler:
                 f"{self.minimum_version_count!r}"
             )
 
-    def _set_state_changed_callback(self, callback: Callable):
+    def _set_state_changed_callback(self, callback: StateChangedProtocol) -> None:
         self.state_changed_callback = callback
+
+    def get_connections(self, request_node_type: Optional[NodeType]) -> List[Dict[str, Any]]:
+        return default_get_connections(server=self.server, request_node_type=request_node_type)
 
     async def create_client(self, peer_info, on_connect):
         return await self.server.start_client(peer_info, on_connect)
 
     async def connect_task(self, peer):
-        async def peer_action(peer: ws.WSWheatConnection):
-
+        async def peer_action(peer: WSWheatConnection):
             peer_info = peer.get_peer_info()
             version = peer.get_version()
             if peer_info is not None and version is not None:
                 self.version_cache.append((peer_info.host, version))
             # Ask peer for peers
-            response = await peer.request_peers(full_node_protocol.RequestPeers(), timeout=3)
+            response = await peer.call_api(FullNodeAPI.request_peers, full_node_protocol.RequestPeers(), timeout=3)
             # Add peers to DB
             if isinstance(response, full_node_protocol.RespondPeers):
                 self.peers_retrieved.append(response)
@@ -109,7 +126,10 @@ class Crawler:
             await peer.close()
 
         try:
-            connected = await self.create_client(PeerInfo(peer.ip_address, peer.port), peer_action)
+            connected = await self.create_client(
+                PeerInfo(await resolve(peer.ip_address, prefer_ipv6=self.config.get("prefer_ipv6", False)), peer.port),
+                peer_action,
+            )
             if not connected:
                 await self.crawl_store.peer_failed_to_connect(peer)
         except Exception as e:
@@ -324,13 +344,13 @@ class Crawler:
             self.log.error(f"Exception: {e}. Traceback: {traceback.format_exc()}.")
 
     def set_server(self, server: WheatServer):
-        self.server = server
+        self._server = server
 
-    def _state_changed(self, change: str):
+    def _state_changed(self, change: str, change_data: Optional[Dict[str, Any]] = None):
         if self.state_changed_callback is not None:
-            self.state_changed_callback(change)
+            self.state_changed_callback(change, change_data)
 
-    async def new_peak(self, request: full_node_protocol.NewPeak, peer: ws.WSWheatConnection):
+    async def new_peak(self, request: full_node_protocol.NewPeak, peer: WSWheatConnection):
         try:
             peer_info = peer.get_peer_info()
             tls_version = peer.get_tls_version()
@@ -345,7 +365,7 @@ class Crawler:
         except Exception as e:
             self.log.error(f"Exception: {e}. Traceback: {traceback.format_exc()}.")
 
-    async def on_connect(self, connection: ws.WSWheatConnection):
+    async def on_connect(self, connection: WSWheatConnection):
         pass
 
     def _close(self):

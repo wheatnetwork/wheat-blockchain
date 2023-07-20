@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import random
@@ -22,9 +24,9 @@ from wheat.consensus.block_record import BlockRecord
 from wheat.full_node.block_store import BlockStore
 from wheat.types.blockchain_format.foliage import Foliage, FoliageBlockData, FoliageTransactionBlock, TransactionsInfo
 from wheat.types.blockchain_format.pool_target import PoolTarget
-from wheat.types.blockchain_format.program import SerializedProgram
 from wheat.types.blockchain_format.proof_of_space import ProofOfSpace
 from wheat.types.blockchain_format.reward_chain_block import RewardChainBlock
+from wheat.types.blockchain_format.serialized_program import SerializedProgram
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.blockchain_format.sub_epoch_summary import SubEpochSummary
 from wheat.types.full_block import FullBlock
@@ -37,8 +39,7 @@ NUM_ITERS = 20000
 random.seed(123456789)
 
 
-async def run_add_block_benchmark(version: int):
-
+async def run_add_block_benchmark(version: int) -> None:
     verbose: bool = "--verbose" in sys.argv
     db_wrapper: DBWrapper2 = await setup_db("block-store-benchmark.db", version)
 
@@ -71,7 +72,6 @@ async def run_add_block_benchmark(version: int):
             print("profiling add_full_block", end="")
 
         for height in range(block_height, block_height + NUM_ITERS):
-
             is_transaction = transaction_block_counter == 0
             fees = uint64(random.randint(0, 150000))
             farmer_coin, pool_coin = rewards(uint32(height))
@@ -259,6 +259,7 @@ async def run_add_block_benchmark(version: int):
         start = monotonic()
         for h in header_hashes:
             block = await block_store.get_full_block(h)
+            assert block is not None
             assert block.header_hash == h
 
         stop = monotonic()
@@ -273,8 +274,9 @@ async def run_add_block_benchmark(version: int):
 
         start = monotonic()
         for h in header_hashes:
-            block = await block_store.get_full_block_bytes(h)
-            assert len(block) > 0
+            block_bs = await block_store.get_full_block_bytes(h)
+            assert block_bs is not None
+            assert len(block_bs) > 0
 
         stop = monotonic()
         total_time += stop - start
@@ -288,7 +290,7 @@ async def run_add_block_benchmark(version: int):
 
         start = monotonic()
         for hi in range(1, block_height):
-            blocks = await block_store.get_full_blocks_at([hi])
+            blocks = await block_store.get_full_blocks_at([uint32(hi)])
             assert len(blocks) == 1
             assert blocks[0].height == hi
 
@@ -304,9 +306,9 @@ async def run_add_block_benchmark(version: int):
 
         start = monotonic()
         for h in header_hashes:
-            blocks = await block_store.get_block_records_by_hash([h])
-            assert len(blocks) == 1
-            assert blocks[0].header_hash == h
+            block_recs = await block_store.get_block_records_by_hash([h])
+            assert len(block_recs) == 1
+            assert block_recs[0].header_hash == h
 
         stop = monotonic()
         total_time += stop - start
@@ -336,8 +338,9 @@ async def run_add_block_benchmark(version: int):
 
         start = monotonic()
         for h in header_hashes:
-            blocks = await block_store.get_block_record(h)
-            assert blocks.header_hash == h
+            block_rec = await block_store.get_block_record(h)
+            assert block_rec is not None
+            assert block_rec.header_hash == h
 
         stop = monotonic()
         total_time += stop - start
@@ -352,8 +355,8 @@ async def run_add_block_benchmark(version: int):
         start = monotonic()
         for i in range(100):
             hi = random.randint(1, block_height - 100)
-            blocks = await block_store.get_block_records_in_range(hi, hi + 99)
-            assert len(blocks) == 100
+            blocks_dict = await block_store.get_block_records_in_range(hi, hi + 99)
+            assert len(blocks_dict) == 100
 
         stop = monotonic()
         total_time += stop - start
@@ -366,8 +369,8 @@ async def run_add_block_benchmark(version: int):
             print("profiling get_block_records_close_to_peak")
 
         start = monotonic()
-        blocks, peak = await block_store.get_block_records_close_to_peak(99)
-        assert len(blocks) == 100
+        block_dict, peak_h = await block_store.get_block_records_close_to_peak(99)
+        assert len(block_dict) == 100
 
         stop = monotonic()
         total_time += stop - start
@@ -396,8 +399,8 @@ async def run_add_block_benchmark(version: int):
 
         start = monotonic()
         for i in range(1, 5000):
-            blocks = await block_store.get_random_not_compactified(100)
-            assert len(blocks) == 100
+            blocks_int_list = await block_store.get_random_not_compactified(100)
+            assert len(blocks_int_list) == 100
         stop = monotonic()
         total_time += stop - start
 

@@ -4,4 +4,4 @@
 set -e
 
 unlink /usr/bin/wheat || true
-unlink /opt/wheat || true
+unlink /usr/bin/wheat-blockchain || true
