@@ -68,7 +68,7 @@ get_bladebit_url() {
   OS="$2"           # "ubuntu", "centos", "macos"
   ARCH="$3"         # "x86-64", "arm64"
 
-  GITHUB_BASE_URL="https://github.com/Wheat-Network/bladebit/releases/download"
+  GITHUB_BASE_URL="https://github.com/Chia-Network/bladebit/releases/download"
   BLADEBIT_FILENAME="$(get_bladebit_filename "$BLADEBIT_VER" "$OS" "$ARCH")"
 
   echo "${GITHUB_BASE_URL}/${BLADEBIT_VER}/${BLADEBIT_FILENAME}"
@@ -79,7 +79,7 @@ get_bladebit_cuda_url() {
   OS="$2"           # "ubuntu", "centos", "macos"
   ARCH="$3"         # "x86-64", "arm64"
 
-  GITHUB_BASE_URL="https://github.com/Wheat-Network/bladebit/releases/download"
+  GITHUB_BASE_URL="https://github.com/Chia-Network/bladebit/releases/download"
   BLADEBIT_CUDA_FILENAME="$(get_bladebit_cuda_filename "$BLADEBIT_VER" "$OS" "$ARCH")"
 
   echo "${GITHUB_BASE_URL}/${BLADEBIT_VER}/${BLADEBIT_CUDA_FILENAME}"
@@ -116,7 +116,7 @@ get_madmax_url() {
   OS="$3"
   ARCH="$4"
 
-  GITHUB_BASE_URL="https://github.com/Wheat-Network/wheat-plotter-madmax/releases/download"
+  GITHUB_BASE_URL="https://github.com/Chia-Network/wheat-plotter-madmax/releases/download"
   MADMAX_FILENAME="$(get_madmax_filename "$KSIZE" "$MADMAX_VER" "$OS" "$ARCH")"
 
   echo "${GITHUB_BASE_URL}/${MADMAX_VER}/${MADMAX_FILENAME}"

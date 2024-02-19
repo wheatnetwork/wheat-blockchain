@@ -63,7 +63,7 @@ if [ "$(uname -m)" = "armv7l" ]; then
   echo "WARNING:"
   echo "The Wheat Blockchain requires a 64 bit OS and this is 32 bit armv7l"
   echo "For more information, see"
-  echo "https://github.com/Wheat-Network/wheat-blockchain/wiki/Raspberry-Pi"
+  echo "https://github.com/wheatnetwork/wheat-blockchain/wiki/Raspberry-Pi"
   echo "Exiting."
   exit 1
 fi
@@ -350,7 +350,7 @@ echo "For assistance join us on Discord in the #support chat channel:"
 echo "https://discord.gg/wheat"
 echo ""
 echo "Try the Quick Start Guide to running wheat-blockchain:"
-echo "https://github.com/Wheat-Network/wheat-blockchain/wiki/Quick-Start-Guide"
+echo "https://github.com/wheatnetwork/wheat-blockchain/wiki/Quick-Start-Guide"
 echo ""
 echo "To install the GUI run '. ./activate' then 'sh install-gui.sh'."
 echo ""

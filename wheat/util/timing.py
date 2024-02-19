@@ -6,7 +6,7 @@ import time
 from typing import Callable, Iterator, Optional, overload
 
 system_delays = {
-    # based on data from https://github.com/Wheat-Network/wheat-blockchain/pull/13724
+    # based on data from https://github.com/wheatnetwork/wheat-blockchain/pull/13724
     "github": {
         "darwin": 20,
         "linux": 1,

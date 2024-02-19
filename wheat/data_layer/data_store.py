@@ -171,7 +171,7 @@ class DataStore:
         generation: Optional[int] = None,
     ) -> Root:
         # This should be replaced by an SQLite schema level check.
-        # https://github.com/Wheat-Network/wheat-blockchain/pull/9284
+        # https://github.com/wheatnetwork/wheat-blockchain/pull/9284
         tree_id = bytes32(tree_id)
 
         async with self.db_wrapper.writer() as writer:

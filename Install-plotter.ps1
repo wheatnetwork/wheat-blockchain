@@ -84,7 +84,7 @@ function Get-BladebitUrl()
         [string]$arch
     )
 
-    $GITHUB_BASE_URL = "https://github.com/Wheat-Network/bladebit/releases/download"
+    $GITHUB_BASE_URL = "https://github.com/Chia-Network/bladebit/releases/download"
     $filename = Get-BladebitFilename -ver $ver -os $os -arch $arch
 
     "${GITHUB_BASE_URL}/${ver}/${filename}"
@@ -98,7 +98,7 @@ function Get-BladebitCudaUrl()
         [string]$arch
     )
 
-    $GITHUB_BASE_URL = "https://github.com/Wheat-Network/bladebit/releases/download"
+    $GITHUB_BASE_URL = "https://github.com/Chia-Network/bladebit/releases/download"
     $filename = Get-BladebitCudaFilename -ver $ver -os $os -arch $arch
 
     "${GITHUB_BASE_URL}/${ver}/${filename}"
@@ -144,7 +144,7 @@ function Get-MadmaxUrl()
         [string]$arch
     )
 
-    $GITHUB_BASE_URL = "https://github.com/Wheat-Network/wheat-plotter-madmax/releases/download"
+    $GITHUB_BASE_URL = "https://github.com/Chia-Network/wheat-plotter-madmax/releases/download"
     $madmax_filename = Get-MadmaxFilename -ksize $ksize -ver $ver -os $os -arch $arch
 
     "${GITHUB_BASE_URL}/${ver}/${madmax_filename}"

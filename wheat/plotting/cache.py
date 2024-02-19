@@ -149,7 +149,7 @@ class Cache:
                     )
                     # TODO, drop the below entry dropping after few versions or whenever we force a cache recreation.
                     #       it's here to filter invalid cache entries coming from bladebit RAM plotting.
-                    #       Related: - https://github.com/Wheat-Network/wheat-blockchain/issues/13084
+                    #       Related: - https://github.com/wheatnetwork/wheat-blockchain/issues/13084
                     #                - https://github.com/Wheat-Network/chiapos/pull/337
                     k = new_entry.prover.get_size()
                     if k not in estimated_c2_sizes:

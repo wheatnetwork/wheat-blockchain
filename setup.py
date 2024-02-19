@@ -117,8 +117,8 @@ kwargs = dict(
     long_description_content_type="text/markdown",
     zip_safe=False,
     project_urls={
-        "Source": "https://github.com/Wheat-Network/wheat-blockchain/",
-        "Changelog": "https://github.com/Wheat-Network/wheat-blockchain/blob/main/CHANGELOG.md",
+        "Source": "https://github.com/wheatnetwork/wheat-blockchain/",
+        "Changelog": "https://github.com/wheatnetwork/wheat-blockchain/blob/main/CHANGELOG.md",
     },
 )
 
