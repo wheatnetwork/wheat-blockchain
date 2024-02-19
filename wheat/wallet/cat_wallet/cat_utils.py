@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Iterator, List, Optional
 
-from blspy import G2Element
+from chia_rs import G2Element
 
 from wheat.types.blockchain_format.coin import Coin, coin_as_list
 from wheat.types.blockchain_format.program import INFINITE_COST, Program
@@ -13,12 +13,15 @@ from wheat.types.condition_opcodes import ConditionOpcode
 from wheat.types.spend_bundle import SpendBundle
 from wheat.util.condition_tools import conditions_dict_for_solution
 from wheat.wallet.lineage_proof import LineageProof
-from wheat.wallet.puzzles.cat_loader import CAT_MOD
+from wheat.wallet.puzzles.load_clvm import load_clvm_maybe_recompile
 from wheat.wallet.uncurried_puzzle import UncurriedPuzzle
 
 NULL_SIGNATURE = G2Element()
 
 ANYONE_CAN_SPEND_PUZZLE = Program.to(1)  # simply return the conditions
+CAT_MOD = load_clvm_maybe_recompile("cat_v2.clsp", package_or_requirement="wheat.wallet.cat_wallet.puzzles")
+CAT_MOD_HASH = CAT_MOD.get_tree_hash()
+CAT_MOD_HASH_HASH: bytes32 = Program.to(CAT_MOD_HASH).get_tree_hash()
 
 
 def empty_program() -> Program:

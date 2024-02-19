@@ -1,26 +1,25 @@
 from __future__ import annotations
 
+import logging
+
 from wheat.protocols import full_node_protocol, introducer_protocol, wallet_protocol
 from wheat.server.outbound_message import NodeType
 from wheat.server.ws_connection import WSWheatConnection
 from wheat.types.mempool_inclusion_status import MempoolInclusionStatus
 from wheat.util.api_decorators import api_request
 from wheat.util.errors import Err
-from wheat.wallet.wallet_node import PeerPeak, WalletNode
+from wheat.wallet.wallet_node import WalletNode
 
 
 class WalletNodeAPI:
+    log: logging.Logger
     wallet_node: WalletNode
 
     def __init__(self, wallet_node) -> None:
+        self.log = logging.getLogger(__name__)
         self.wallet_node = wallet_node
 
-    @property
-    def log(self):
-        return self.wallet_node.log
-
-    @property
-    def api_ready(self):
+    def ready(self) -> bool:
         return self.wallet_node.logged_in
 
     @api_request(peer_required=True)
@@ -45,7 +44,6 @@ class WalletNodeAPI:
         """
         The full node sent as a new peak
         """
-        self.wallet_node.node_peaks[peer.peer_node_id] = PeerPeak(peak.height, peak.header_hash)
         # For trusted peers check if there are untrusted peers, if so make sure to disconnect them if the trusted node
         # is synced.
         if self.wallet_node.is_trusted(peer):
@@ -54,8 +52,12 @@ class WalletNodeAPI:
                 peer for peer in full_node_connections if not self.wallet_node.is_trusted(peer) and not peer.closed
             ]
 
-            # Check for untrusted peers first to avoid calling is_peer_synced if not required
-            if len(untrusted_peers) > 0 and await self.wallet_node.is_peer_synced(peer, peak.height):
+            # Check for untrusted peers to avoid fetching the timestamp if not required
+            if len(untrusted_peers) > 0:
+                timestamp = await self.wallet_node.get_timestamp_for_height_from_peer(peak.height, peer)
+            else:
+                timestamp = None
+            if timestamp is not None and self.wallet_node.is_timestamp_in_sync(timestamp):
                 self.log.info("Connected to a a synced trusted peer, disconnecting from all untrusted nodes.")
                 # Stop peer discovery/connect tasks first
                 if self.wallet_node.wallet_peers is not None:
@@ -95,6 +97,12 @@ class WalletNodeAPI:
         async with self.wallet_node.wallet_state_manager.lock:
             assert peer.peer_node_id is not None
             name = peer.peer_node_id.hex()
+            if peer.peer_node_id in self.wallet_node._tx_messages_in_progress:
+                self.wallet_node._tx_messages_in_progress[peer.peer_node_id] = [
+                    txid for txid in self.wallet_node._tx_messages_in_progress[peer.peer_node_id] if txid != ack.txid
+                ]
+                if self.wallet_node._tx_messages_in_progress[peer.peer_node_id] == []:
+                    del self.wallet_node._tx_messages_in_progress[peer.peer_node_id]
             status = MempoolInclusionStatus(ack.status)
             try:
                 wallet_state_manager = self.wallet_node.wallet_state_manager
@@ -190,4 +198,8 @@ class WalletNodeAPI:
 
     @api_request()
     async def respond_blocks(self, request: full_node_protocol.RespondBlocks) -> None:
+        pass
+
+    @api_request()
+    async def respond_coin_records_by_puzzle_hash(self, response: wallet_protocol.RespondCoinRecords):
         pass

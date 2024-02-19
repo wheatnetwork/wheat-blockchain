@@ -7,7 +7,7 @@ from wheat.full_node.signage_point import SignagePoint
 from wheat.rpc.rpc_client import RpcClient
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.coin_record import CoinRecord
-from wheat.types.coin_spend import CoinSpend
+from wheat.types.coin_spend import CoinSpend, CoinSpendWithConditions
 from wheat.types.end_of_slot_bundle import EndOfSubSlotBundle
 from wheat.types.full_block import FullBlock
 from wheat.types.spend_bundle import SpendBundle
@@ -208,6 +208,17 @@ class FullNodeRpcClient(RpcClient):
         except Exception:
             return None
 
+    async def get_block_spends_with_conditions(self, header_hash: bytes32) -> Optional[List[CoinSpendWithConditions]]:
+        try:
+            response = await self.fetch("get_block_spends_with_conditions", {"header_hash": header_hash.hex()})
+            block_spends: List[CoinSpendWithConditions] = []
+            for block_spend in response["block_spends_with_conditions"]:
+                block_spends.append(CoinSpendWithConditions.from_json_dict(block_spend))
+            return block_spends
+
+        except Exception:
+            return None
+
     async def push_tx(self, spend_bundle: SpendBundle) -> Dict[str, Any]:
         return await self.fetch("push_tx", {"spend_bundle": spend_bundle.to_json_dict()})
 
@@ -242,6 +253,10 @@ class FullNodeRpcClient(RpcClient):
         except Exception:
             return None
 
+    async def get_mempool_items_by_coin_name(self, coin_name: bytes32) -> Dict[str, Any]:
+        response = await self.fetch("get_mempool_items_by_coin_name", {"coin_name": coin_name.hex()})
+        return response
+
     async def get_recent_signage_point_or_eos(
         self, sp_hash: Optional[bytes32], challenge_hash: Optional[bytes32]
     ) -> Optional[Any]:
@@ -272,10 +287,3 @@ class FullNodeRpcClient(RpcClient):
     ) -> Dict[str, Any]:
         response = await self.fetch("get_fee_estimate", {"cost": cost, "target_times": target_times})
         return response
-
-    async def check_puzzle_hash_coin(self, puzzle_hash: bytes32) -> bool:
-        try:
-            response = await self.fetch("check_puzzle_hash_coin", {"puzzle_hash": puzzle_hash.hex()})
-            return response["status"]
-        except Exception:
-            return False

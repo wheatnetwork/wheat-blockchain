@@ -7,7 +7,6 @@ import cProfile
 import logging
 import os
 import shutil
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -49,9 +48,6 @@ def enable_profiler(profile: bool, counter: int) -> Iterator[None]:
     if not profile:
         yield
         return
-
-    if sys.version_info < (3, 8):
-        raise Exception(f"Python 3.8 or higher required when profiling is requested, running with: {sys.version}")
 
     with cProfile.Profile() as pr:
         receive_start_time = time.monotonic()
@@ -142,16 +138,14 @@ async def run_sync_test(
             config["full_node"]["single_threaded"] = True
         config["full_node"]["db_sync"] = db_sync
         config["full_node"]["enable_profiler"] = node_profiler
-        full_node = FullNode(
+        full_node = await FullNode.create(
             config["full_node"],
             root_path=root_path,
             consensus_constants=constants,
         )
 
-        try:
-            full_node.set_server(cast(WheatServer, FakeServer()))
-            await full_node._start()
-
+        full_node.set_server(cast(WheatServer, FakeServer()))
+        async with full_node.manage():
             peak = full_node.blockchain.get_peak()
             if peak is not None:
                 height = int(peak.height)
@@ -178,6 +172,7 @@ async def run_sync_test(
                 logger.warning(f"starting test {start_time}")
                 worst_batch_height = None
                 worst_batch_time_per_block = None
+                peer_info = peer.get_peer_logging()
                 async for r in rows:
                     batch_start_time = time.monotonic()
                     with enable_profiler(profile, height):
@@ -197,7 +192,7 @@ async def run_sync_test(
                                 await full_node.add_unfinished_block(make_unfinished_block(b, constants), peer)
                                 await full_node.add_block(b)
                         else:
-                            success, summary = await full_node.add_block_batch(block_batch, peer, None)
+                            success, summary, _ = await full_node.add_block_batch(block_batch, peer_info, None)
                             end_height = block_batch[-1].height
                             full_node.blockchain.clean_block_record(end_height - full_node.constants.BLOCKS_CACHE_SIZE)
 
@@ -232,10 +227,6 @@ async def run_sync_test(
                 logger.warning(f"end-height: {height}")
             if node_profiler:
                 (root_path / "profile-node").rename("./profile-node")
-        finally:
-            print("closing full node")
-            full_node._close()
-            await full_node._await_closed()
 
 
 @click.group()
@@ -343,16 +334,14 @@ async def run_sync_checkpoint(
     overrides = config["network_overrides"]["constants"][config["selected_network"]]
     constants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
     config["full_node"]["db_sync"] = "off"
-    full_node = FullNode(
+    full_node = await FullNode.create(
         config["full_node"],
         root_path=root_path,
         consensus_constants=constants,
     )
 
-    try:
-        full_node.set_server(FakeServer())  # type: ignore[arg-type]
-        await full_node._start()
-
+    full_node.set_server(FakeServer())  # type: ignore[arg-type]
+    async with full_node.manage():
         peer: WSWheatConnection = FakePeer()  # type: ignore[assignment]
 
         print()
@@ -364,7 +353,7 @@ async def run_sync_checkpoint(
             )
 
             block_batch = []
-
+            peer_info = peer.get_peer_logging()
             async for r in rows:
                 block = FullBlock.from_bytes(zstd.decompress(r[0]))
                 block_batch.append(block)
@@ -372,7 +361,7 @@ async def run_sync_checkpoint(
                 if len(block_batch) < 32:
                     continue
 
-                success, _ = await full_node.add_block_batch(block_batch, peer, None)
+                success, _, _ = await full_node.add_block_batch(block_batch, peer_info, None)
                 end_height = block_batch[-1].height
                 full_node.blockchain.clean_block_record(end_height - full_node.constants.BLOCKS_CACHE_SIZE)
 
@@ -384,14 +373,9 @@ async def run_sync_checkpoint(
                 block_batch = []
 
             if len(block_batch) > 0:
-                success, _ = await full_node.add_block_batch(block_batch, peer, None)
+                success, _, _ = await full_node.add_block_batch(block_batch, peer_info, None)
                 if not success:
                     raise RuntimeError("failed to ingest block batch")
-
-    finally:
-        print("closing full node")
-        full_node._close()
-        await full_node._await_closed()
 
 
 main.add_command(run)

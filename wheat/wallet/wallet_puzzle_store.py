@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Set
 
-from blspy import G1Element
+from chia_rs import G1Element
 
 from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.util.db_wrapper import DBWrapper2, execute_fetchone
@@ -36,17 +36,15 @@ class WalletPuzzleStore:
         self.db_wrapper = db_wrapper
         async with self.db_wrapper.writer_maybe_transaction() as conn:
             await conn.execute(
-                (
-                    "CREATE TABLE IF NOT EXISTS derivation_paths("
-                    "derivation_index int,"
-                    " pubkey text,"
-                    " puzzle_hash text,"
-                    " wallet_type int,"
-                    " wallet_id int,"
-                    " used tinyint,"
-                    " hardened tinyint,"
-                    " PRIMARY KEY(puzzle_hash, wallet_id))"
-                )
+                "CREATE TABLE IF NOT EXISTS derivation_paths("
+                "derivation_index int,"
+                " pubkey text,"
+                " puzzle_hash text,"
+                " wallet_type int,"
+                " wallet_id int,"
+                " used tinyint,"
+                " hardened tinyint,"
+                " PRIMARY KEY(puzzle_hash, wallet_id))"
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS derivation_index_index on derivation_paths(derivation_index)"
@@ -288,14 +286,19 @@ class WalletPuzzleStore:
 
         return None
 
-    async def get_all_puzzle_hashes(self) -> Set[bytes32]:
+    async def get_all_puzzle_hashes(self, wallet_id: Optional[int] = None) -> Set[bytes32]:
         """
         Return a set containing all puzzle_hashes we generated.
         """
 
         async with self.db_wrapper.reader_no_transaction() as conn:
-            rows = await conn.execute_fetchall("SELECT puzzle_hash FROM derivation_paths")
-            return set(bytes32.fromhex(row[0]) for row in rows)
+            if wallet_id is None:
+                rows = await conn.execute_fetchall("SELECT puzzle_hash FROM derivation_paths")
+            else:
+                rows = await conn.execute_fetchall(
+                    "SELECT puzzle_hash FROM derivation_paths WHERE wallet_id=?", (wallet_id,)
+                )
+            return {bytes32.fromhex(row[0]) for row in rows}
 
     async def get_last_derivation_path(self) -> Optional[uint32]:
         """
@@ -368,7 +371,7 @@ class WalletPuzzleStore:
             cursor = await conn.execute("DELETE FROM derivation_paths WHERE wallet_id=?;", (wallet_id,))
             await cursor.close()
         # Clear caches
-        puzzle_hashes = set(bytes32.fromhex(row[0]) for row in rows)
+        puzzle_hashes = {bytes32.fromhex(row[0]) for row in rows}
         for puzzle_hash in puzzle_hashes:
             try:
                 self.wallet_identifier_cache.remove(puzzle_hash)

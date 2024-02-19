@@ -4,12 +4,10 @@ from dataclasses import dataclass
 from typing import List
 
 from wheat.types.condition_opcodes import ConditionOpcode
-from wheat.util.streamable import Streamable, streamable
 
 
-@streamable
 @dataclass(frozen=True)
-class ConditionWithArgs(Streamable):
+class ConditionWithArgs:
     """
     This structure is used to store parsed CLVM conditions
     Conditions in CLVM have either format of (opcode, var1) or (opcode, var1, var2)

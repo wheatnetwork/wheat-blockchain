@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import io
 import logging
@@ -11,7 +12,7 @@ import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, Any, AsyncIterator, ClassVar, Dict, List, Optional, Set, Tuple, cast
 
 from chiavdf import create_discriminant, prove
 
@@ -36,7 +37,7 @@ from wheat.types.blockchain_format.slots import (
     SubSlotProofs,
 )
 from wheat.types.blockchain_format.sub_epoch_summary import SubEpochSummary
-from wheat.types.blockchain_format.vdf import VDFInfo, VDFProof
+from wheat.types.blockchain_format.vdf import VDFInfo, VDFProof, validate_vdf
 from wheat.types.end_of_slot_bundle import EndOfSubSlotBundle
 from wheat.util.config import process_config_start_method
 from wheat.util.ints import uint8, uint16, uint32, uint64, uint128
@@ -69,6 +70,11 @@ def prove_bluebox_slow(payload: bytes) -> bytes:
 
 
 class Timelord:
+    if TYPE_CHECKING:
+        from wheat.rpc.rpc_server import RpcServiceProtocol
+
+        _protocol_check: ClassVar[RpcServiceProtocol] = cast("Timelord", None)
+
     @property
     def server(self) -> WheatServer:
         # This is a stop gap until the class usage is refactored such the values of
@@ -139,7 +145,8 @@ class Timelord:
         self.max_allowed_inactivity_time = 60
         self.bluebox_pool: Optional[ProcessPoolExecutor] = None
 
-    async def _start(self) -> None:
+    @contextlib.asynccontextmanager
+    async def manage(self) -> AsyncIterator[None]:
         self.lock: asyncio.Lock = asyncio.Lock()
         self.vdf_server = await asyncio.start_server(
             self._handle_client,
@@ -166,6 +173,16 @@ class Timelord:
             else:
                 self.main_loop = asyncio.create_task(self._manage_discriminant_queue_sanitizer())
         log.info(f"Started timelord, listening on port {self.get_vdf_server_port()}")
+        try:
+            yield
+        finally:
+            self._shut_down = True
+            for task in self.process_communication_tasks:
+                task.cancel()
+            if self.main_loop is not None:
+                self.main_loop.cancel()
+            if self.bluebox_pool is not None:
+                self.bluebox_pool.shutdown()
 
     def get_connections(self, request_node_type: Optional[NodeType]) -> List[Dict[str, Any]]:
         return default_get_connections(server=self.server, request_node_type=request_node_type)
@@ -177,18 +194,6 @@ class Timelord:
         if self.vdf_server is not None:
             return uint16(self.vdf_server.sockets[0].getsockname()[1])
         return None
-
-    def _close(self) -> None:
-        self._shut_down = True
-        for task in self.process_communication_tasks:
-            task.cancel()
-        if self.main_loop is not None:
-            self.main_loop.cancel()
-        if self.bluebox_pool is not None:
-            self.bluebox_pool.shutdown()
-
-    async def _await_closed(self) -> None:
-        pass
 
     def _set_state_changed_callback(self, callback: StateChangedProtocol) -> None:
         self.state_changed_callback = callback
@@ -227,6 +232,12 @@ class Timelord:
         except Exception as e:
             log.error(f"Exception in stop chain: {type(e)} {e}")
 
+    def get_height(self) -> uint32:
+        if self.last_state.state_type == StateType.FIRST_SUB_SLOT:
+            return uint32(0)
+        else:
+            return uint32(self.last_state.get_height() + 1)
+
     def _can_infuse_unfinished_block(self, block: timelord_protocol.NewUnfinishedBlockTimelord) -> Optional[uint64]:
         assert self.last_state is not None
         sub_slot_iters = self.last_state.get_sub_slot_iters()
@@ -239,6 +250,7 @@ class Timelord:
                 rc_block,
                 sub_slot_iters,
                 difficulty,
+                self.get_height(),
             )
         except Exception as e:
             log.warning(f"Received invalid unfinished block: {e}.")
@@ -476,7 +488,7 @@ class Timelord:
                     log.warning(f"SP: Do not have correct challenge {rc_challenge.hex()} has {rc_info.challenge}")
                     # This proof is on an outdated challenge, so don't use it
                     continue
-                iters_from_sub_slot_start = cc_info.number_of_iterations + self.last_state.get_last_ip()
+                iters_from_sub_slot_start = uint64(cc_info.number_of_iterations + self.last_state.get_last_ip())
                 response = timelord_protocol.NewSignagePointVDF(
                     signage_point_index,
                     dataclasses.replace(cc_info, number_of_iterations=iters_from_sub_slot_start),
@@ -535,6 +547,7 @@ class Timelord:
                             unfinished_block.reward_chain_block,
                             self.last_state.get_sub_slot_iters(),
                             self.last_state.get_difficulty(),
+                            self.get_height(),
                         )
                     except Exception as e:
                         log.error(f"Error {e}")
@@ -748,7 +761,7 @@ class Timelord:
             log.debug("Collected end of subslot vdfs.")
             self.iters_finished.add(iter_to_look_for)
             self.last_active_time = time.time()
-            iters_from_sub_slot_start = cc_vdf.number_of_iterations + self.last_state.get_last_ip()
+            iters_from_sub_slot_start = uint64(cc_vdf.number_of_iterations + self.last_state.get_last_ip())
             cc_vdf = dataclasses.replace(cc_vdf, number_of_iterations=iters_from_sub_slot_start)
             if icc_ip_vdf is not None:
                 if self.last_state.peak is not None:
@@ -1018,8 +1031,9 @@ class Timelord:
                 proof_bytes: bytes = stdout_bytes_io.read()
 
                 # Verifies our own proof just in case
-                form_size = ClassgroupElement.get_size(self.constants)
-                output = ClassgroupElement.from_bytes(y_bytes[:form_size])
+
+                form_size = ClassgroupElement.get_size()
+                output = ClassgroupElement.create(y_bytes[:form_size])
                 # default value so that it's always set for state_changed later
                 ips: float = 0
                 if not self.bluebox_mode:
@@ -1042,7 +1056,7 @@ class Timelord:
                     self.bluebox_mode,
                 )
 
-                if not vdf_proof.is_valid(self.constants, initial_form, vdf_info):
+                if not validate_vdf(vdf_proof, self.constants, initial_form, vdf_info):
                     log.error("Invalid proof of time!")
                 if not self.bluebox_mode:
                     async with self.lock:
@@ -1172,12 +1186,12 @@ class Timelord:
                     log.info(f"Finished compact proof: {picked_info.height}. Time: {delta}s. IPS: {ips}.")
                     output = proof[:100]
                     proof_part = proof[100:200]
-                    if ClassgroupElement.from_bytes(output) != picked_info.new_proof_of_time.output:
+                    if ClassgroupElement.create(output) != picked_info.new_proof_of_time.output:
                         log.error("Expected vdf output different than produced one. Stopping.")
                         return
                     vdf_proof = VDFProof(uint8(0), proof_part, True)
                     initial_form = ClassgroupElement.get_default_element()
-                    if not vdf_proof.is_valid(self.constants, initial_form, picked_info.new_proof_of_time):
+                    if not validate_vdf(vdf_proof, self.constants, initial_form, picked_info.new_proof_of_time):
                         log.error("Invalid compact proof of time!")
                         return
                     response = timelord_protocol.RespondCompactProofOfTime(

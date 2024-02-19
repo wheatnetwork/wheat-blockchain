@@ -9,15 +9,15 @@ from wheat.types.generator_types import BlockGenerator, CompressorArg, Generator
 from wheat.util.ints import uint32
 from wheat.wallet.puzzles.load_clvm import load_clvm_maybe_recompile
 
-DECOMPRESS_BLOCK = load_clvm_maybe_recompile("block_program_zero.clsp", package_or_requirement="wheat.wallet.puzzles")
-DECOMPRESS_PUZZLE = load_clvm_maybe_recompile("decompress_puzzle.clsp", package_or_requirement="wheat.wallet.puzzles")
+DECOMPRESS_BLOCK = load_clvm_maybe_recompile("block_program_zero.clsp", package_or_requirement="wheat.full_node.puzzles")
+DECOMPRESS_PUZZLE = load_clvm_maybe_recompile("decompress_puzzle.clsp", package_or_requirement="wheat.full_node.puzzles")
 # DECOMPRESS_CSE = load_clvm_maybe_recompile(
 #     "decompress_coin_spend_entry.clsp",
-#     package_or_requirement="wheat.wallet.puzzles",
+#     package_or_requirement="wheat.full_node.puzzles",
 # )
 
 DECOMPRESS_CSE_WITH_PREFIX = load_clvm_maybe_recompile(
-    "decompress_coin_spend_entry_with_prefix.clsp", package_or_requirement="wheat.wallet.puzzles"
+    "decompress_coin_spend_entry_with_prefix.clsp", package_or_requirement="wheat.full_node.puzzles"
 )
 log = logging.getLogger(__name__)
 

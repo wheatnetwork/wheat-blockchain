@@ -1,0 +1,16 @@
+[Unit]
+Description=Wheat Timelord Service for %i
+Requires=wheat-daemon@%i.service
+After=wheat-daemon@%i.service
+
+[Service]
+Type=simple
+Environment=WHEAT_ROOT=/home/%i/.wheat/mainnet
+ExecStart=/opt/wheat/start_timelord
+User=%i
+Group=%i
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target

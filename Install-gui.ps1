@@ -16,14 +16,14 @@ if ($null -eq (Get-Command node -ErrorAction SilentlyContinue))
 
 Write-Output "Running 'git submodule update --init --recursive'."
 Write-Output ""
-# git submodule update --init --recursive
-# if ( $SUBMODULE_BRANCH ) {
-  # git fetch --all
-  # git reset --hard $SUBMODULE_BRANCH
-  # Write-Output ""
-  # Write-Output "Building the GUI with branch $SUBMODULE_BRANCH"
-  # Write-Output ""
-# }
+git submodule update --init --recursive
+if ( $SUBMODULE_BRANCH ) {
+  git fetch --all
+  git reset --hard $SUBMODULE_BRANCH
+  Write-Output ""
+  Write-Output "Building the GUI with branch $SUBMODULE_BRANCH"
+  Write-Output ""
+}
 
 
 Push-Location
@@ -34,7 +34,7 @@ try {
     npm ci --loglevel=error
     npm audit fix
     npm run build
-   #  py ..\installhelper.py
+    py ..\installhelper.py
 
     Write-Output ""
     Write-Output "Wheat blockchain Install-gui.ps1 completed."

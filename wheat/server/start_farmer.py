@@ -5,17 +5,17 @@ import sys
 from typing import Any, Dict, Optional
 
 from wheat.consensus.constants import ConsensusConstants
-from wheat.consensus.default_constants import DEFAULT_CONSTANTS
+from wheat.consensus.default_constants import DEFAULT_CONSTANTS, update_testnet_overrides
 from wheat.farmer.farmer import Farmer
 from wheat.farmer.farmer_api import FarmerAPI
 from wheat.rpc.farmer_rpc_api import FarmerRpcApi
 from wheat.server.outbound_message import NodeType
 from wheat.server.start_service import RpcInfo, Service, async_run
-from wheat.types.peer_info import UnresolvedPeerInfo
 from wheat.util.wheat_logging import initialize_service_logging
-from wheat.util.config import load_config, load_config_cli
+from wheat.util.config import get_unresolved_peer_infos, load_config, load_config_cli
 from wheat.util.default_root import DEFAULT_ROOT_PATH
 from wheat.util.keychain import Keychain
+from wheat.util.misc import SignalHandlers
 
 # See: https://bugs.python.org/issue29288
 "".encode("idna")
@@ -30,20 +30,18 @@ def create_farmer_service(
     consensus_constants: ConsensusConstants,
     keychain: Optional[Keychain] = None,
     connect_to_daemon: bool = True,
-) -> Service[Farmer]:
+) -> Service[Farmer, FarmerAPI]:
     service_config = config[SERVICE_NAME]
 
-    fnp = service_config.get("full_node_peer")
-    connect_peers = set() if fnp is None else {UnresolvedPeerInfo(fnp["host"], fnp["port"])}
-
-    overrides = service_config["network_overrides"]["constants"][service_config["selected_network"]]
+    network_id = service_config["selected_network"]
+    overrides = service_config["network_overrides"]["constants"][network_id]
+    update_testnet_overrides(network_id, overrides)
     updated_constants = consensus_constants.replace_str_to_bytes(**overrides)
 
     farmer = Farmer(
         root_path, service_config, config_pool, consensus_constants=updated_constants, local_keychain=keychain
     )
     peer_api = FarmerAPI(farmer)
-    network_id = service_config["selected_network"]
     rpc_info: Optional[RpcInfo] = None
     if service_config["start_rpc_server"]:
         rpc_info = (FarmerRpcApi, service_config["rpc_port"])
@@ -55,7 +53,7 @@ def create_farmer_service(
         node_type=NodeType.FARMER,
         advertised_port=service_config["port"],
         service_name=SERVICE_NAME,
-        connect_peers=connect_peers,
+        connect_peers=get_unresolved_peer_infos(service_config, NodeType.FULL_NODE),
         on_connect_callback=farmer.on_connect,
         network_id=network_id,
         rpc_info=rpc_info,
@@ -72,8 +70,9 @@ async def async_main() -> int:
     config["pool"] = config_pool
     initialize_service_logging(service_name=SERVICE_NAME, config=config)
     service = create_farmer_service(DEFAULT_ROOT_PATH, config, config_pool, DEFAULT_CONSTANTS)
-    await service.setup_process_global_state()
-    await service.run()
+    async with SignalHandlers.manage() as signal_handlers:
+        await service.setup_process_global_state(signal_handlers=signal_handlers)
+        await service.run()
 
     return 0
 

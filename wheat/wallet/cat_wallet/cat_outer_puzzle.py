@@ -9,6 +9,7 @@ from wheat.types.blockchain_format.sized_bytes import bytes32
 from wheat.types.coin_spend import CoinSpend
 from wheat.util.ints import uint64
 from wheat.wallet.cat_wallet.cat_utils import (
+    CAT_MOD,
     SpendableCAT,
     construct_cat_puzzle,
     match_cat_puzzle,
@@ -16,7 +17,6 @@ from wheat.wallet.cat_wallet.cat_utils import (
 )
 from wheat.wallet.lineage_proof import LineageProof
 from wheat.wallet.puzzle_drivers import PuzzleInfo, Solver
-from wheat.wallet.puzzles.cat_loader import CAT_MOD
 from wheat.wallet.uncurried_puzzle import UncurriedPuzzle, uncurry_puzzle
 
 
@@ -100,8 +100,8 @@ class CATOuterPuzzle:
             parent_coin: Coin = parent_spend.coin
             also = constructor.also()
             if also is not None:
+                solution = self._solve(also, solver, puzzle, solution)
                 puzzle = self._construct(also, puzzle)
-                solution = self._solve(also, solver, inner_puzzle, inner_solution)
             args = match_cat_puzzle(uncurry_puzzle(parent_spend.puzzle_reveal.to_program()))
             assert args is not None
             _, _, parent_inner_puzzle = args

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Set, Tuple
 
-from blspy import AugSchemeMPL, G1Element, PrivateKey
+from chia_rs import AugSchemeMPL, G1Element, PrivateKey
 
 from wheat.consensus.coinbase import create_puzzlehash_for_pk
 from wheat.types.blockchain_format.sized_bytes import bytes32

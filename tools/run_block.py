@@ -61,7 +61,7 @@ from wheat.wallet.puzzles.load_clvm import load_serialized_clvm_maybe_recompile
 from wheat.wallet.uncurried_puzzle import uncurry_puzzle
 
 DESERIALIZE_MOD = load_serialized_clvm_maybe_recompile(
-    "chialisp_deserialisation.clsp", package_or_requirement="wheat.wallet.puzzles"
+    "chialisp_deserialisation.clsp", package_or_requirement="wheat.consensus.puzzles"
 )
 
 
@@ -104,7 +104,7 @@ def npc_to_dict(npc: NPC):
 
 def run_generator(block_generator: BlockGenerator, constants: ConsensusConstants, max_cost: int) -> List[CAT]:
     block_args = [bytes(a) for a in block_generator.generator_refs]
-    cost, block_result = block_generator.program.run_with_cost(max_cost, DESERIALIZE_MOD, block_args)
+    cost, block_result = block_generator.program.run_with_cost(max_cost, [DESERIALIZE_MOD, block_args])
 
     coin_spends = block_result.first()
 
@@ -134,7 +134,7 @@ def run_generator(block_generator: BlockGenerator, constants: ConsensusConstants
                 continue
 
             # If only 3 elements (opcode + 2 args), there is no memo, this is ph, amount
-            if type(condition[3]) != list:
+            if type(condition[3]) is not list:
                 # If it's not a list, it's not the correct format
                 conds[op].append(ConditionWithArgs(op, [i for i in condition[1:3]]))
                 continue
@@ -191,7 +191,7 @@ def run_generator_with_args(
 
 
 @click.command()
-@click.argument("filename", type=click.Path(exists=True), default="testnet10.396963.json")
+@click.argument("filename", type=click.Path(exists=True), default="testnet0.396963.json")
 def cmd_run_json_block_file(filename):
     """`file` is a file containing a FullBlock in JSON format"""
     return run_json_block_file(Path(filename))
