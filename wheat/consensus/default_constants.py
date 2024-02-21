@@ -64,14 +64,14 @@ DEFAULT_CONSTANTS = ConsensusConstants(
     POOL_SUB_SLOT_ITERS=uint64(37600000000),  # iters limit * NUM_SPS
     SOFT_FORK2_HEIGHT=uint32(0),
     # June 2024
-    HARD_FORK_HEIGHT=uint32(3128008),
-    HARD_FORK_FIX_HEIGHT=uint32(3128008),
+    HARD_FORK_HEIGHT=uint32(5628008),
+    HARD_FORK_FIX_HEIGHT=uint32(5628008),
     # June 2027
-    PLOT_FILTER_128_HEIGHT=uint32(6128008),
+    PLOT_FILTER_128_HEIGHT=uint32(8628008),
     # June 2030
-    PLOT_FILTER_64_HEIGHT=uint32(6138008),
+    PLOT_FILTER_64_HEIGHT=uint32(8638008),
     # June 2033
-    PLOT_FILTER_32_HEIGHT=uint32(10128008),
+    PLOT_FILTER_32_HEIGHT=uint32(18128008),
 )
 
 
@@ -83,12 +83,12 @@ def update_testnet_overrides(network_id: str, overrides: Dict[str, Any]) -> None
     if "SOFT_FORK2_HEIGHT" not in overrides:
         overrides["SOFT_FORK2_HEIGHT"] = 0
     if "HARD_FORK_HEIGHT" not in overrides:
-        overrides["HARD_FORK_HEIGHT"] = 2997292
+        overrides["HARD_FORK_HEIGHT"] = 5697292
     if "HARD_FORK_FIX_HEIGHT" not in overrides:
-        overrides["HARD_FORK_FIX_HEIGHT"] = 3426000
+        overrides["HARD_FORK_FIX_HEIGHT"] = 5626000
     if "PLOT_FILTER_128_HEIGHT" not in overrides:
-        overrides["PLOT_FILTER_128_HEIGHT"] = 3061804
+        overrides["PLOT_FILTER_128_HEIGHT"] = 8628008
     if "PLOT_FILTER_64_HEIGHT" not in overrides:
-        overrides["PLOT_FILTER_64_HEIGHT"] = 8010796
+        overrides["PLOT_FILTER_64_HEIGHT"] = 8628008
     if "PLOT_FILTER_32_HEIGHT" not in overrides:
-        overrides["PLOT_FILTER_32_HEIGHT"] = 13056556
+        overrides["PLOT_FILTER_32_HEIGHT"] = 18128008
